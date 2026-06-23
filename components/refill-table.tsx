@@ -55,6 +55,7 @@ export function RefillTable({ machineId, items, prefilledStockIn, isEditable = t
   const [isViewDOpen, setIsViewDOOpen] = React.useState(false)
   const [copiedCode, setCopiedCode] = React.useState("")
   const [doCodeFilter, setDoCodeFilter] = React.useState("")
+  const [selectedDoCode, setSelectedDoCode] = React.useState("")
 
   React.useEffect(() => {
     async function reloadOrders() {
@@ -78,83 +79,59 @@ export function RefillTable({ machineId, items, prefilledStockIn, isEditable = t
     }
   }, [])
 
-  const machineOrders = React.useMemo(
+  const pendingMachineOrders = React.useMemo(
     () =>
       allOrders
-        .filter((order) => order.machineId === machineId)
-        .sort((a, b) => {
-          if (a.status !== b.status) {
-            return a.status === "pending" ? -1 : 1
-          }
-          return b.date.localeCompare(a.date)
-        }),
+        .filter(
+          (order) => order.machineId === machineId && order.status === "pending"
+        )
+        .sort((a, b) => b.date.localeCompare(a.date)),
     [allOrders, machineId]
   )
 
   const filteredOrders = React.useMemo(() => {
     const keyword = doCodeFilter.trim().toUpperCase()
-    if (!keyword) return machineOrders
-    return machineOrders.filter((order) =>
+    if (!keyword) return pendingMachineOrders
+    return pendingMachineOrders.filter((order) =>
       order.code.toUpperCase().includes(keyword)
     )
-  }, [machineOrders, doCodeFilter])
+  }, [pendingMachineOrders, doCodeFilter])
 
-  const currentOrders = React.useMemo(
-    () => filteredOrders.filter((order) => order.status === "pending"),
-    [filteredOrders]
+  React.useEffect(() => {
+    if (filteredOrders.length === 0) {
+      setSelectedDoCode("")
+      return
+    }
+
+    const selectedExists = filteredOrders.some(
+      (order) => order.code === selectedDoCode
+    )
+
+    if (!selectedExists) {
+      setSelectedDoCode(filteredOrders[0].code)
+    }
+  }, [filteredOrders, selectedDoCode])
+
+  const selectedOrder = React.useMemo(
+    () => filteredOrders.find((order) => order.code === selectedDoCode) ?? null,
+    [filteredOrders, selectedDoCode]
   )
 
-  const previousOrders = React.useMemo(
-    () => filteredOrders.filter((order) => order.status === "completed"),
-    [filteredOrders]
-  )
-
-  const totalQty = React.useMemo(
+  const selectedOrderLines = React.useMemo(
     () =>
-      filteredOrders.reduce(
-        (sum, order) =>
-          sum + order.items.reduce((itemSum, item) => itemSum + item.qty, 0),
-        0
-      ),
-    [filteredOrders]
+      (selectedOrder?.items ?? []).map((item) => ({
+        doCode: selectedOrder?.code ?? "",
+        slot: item.slot,
+        productCode: item.productCode,
+        productName: item.productName,
+        qty: item.qty,
+      })),
+    [selectedOrder]
   )
 
-  const filteredOrderLines = React.useMemo(
-    () =>
-      filteredOrders
-        .flatMap((order) =>
-        order.items.map((item) => ({
-          doCode: order.code,
-          slot: item.slot,
-          productCode: item.productCode,
-          productName: item.productName,
-          qty: item.qty,
-        }))
-      )
-      .sort((a, b) => {
-        const codeCompare = a.doCode.localeCompare(b.doCode, undefined, {
-          numeric: true,
-          sensitivity: "base",
-        })
-        if (codeCompare !== 0) return codeCompare
-
-        return a.slot.localeCompare(b.slot, undefined, {
-          numeric: true,
-          sensitivity: "base",
-        })
-      }),
-    [filteredOrders]
-  )
-
-  const orderTotalMap = React.useMemo(
-    () =>
-      Object.fromEntries(
-        filteredOrders.map((order) => [
-          order.code,
-          order.items.reduce((sum, item) => sum + item.qty, 0),
-        ])
-      ),
-    [filteredOrders]
+  const selectedOrderTotalQty = React.useMemo(
+    () => selectedOrderLines.reduce((sum, item) => sum + item.qty, 0),
+    [selectedOrderLines]
   )
   const readonlyInputCls = !isEditable
     ? "text-muted-foreground disabled:text-muted-foreground disabled:opacity-100"
@@ -248,8 +225,9 @@ export function RefillTable({ machineId, items, prefilledStockIn, isEditable = t
             type="button"
             size="sm"
             onClick={() => setIsViewDOOpen(true)}
-            className={`h-7 text-[11px] gap-1.5 px-2.5 ${machineOrders.length > 0 ? "bg-emerald-600 hover:bg-emerald-700 text-white" : ""}`}
-            variant={machineOrders.length > 0 ? "default" : "outline"}
+            disabled={filteredOrders.length === 0}
+            className={`h-7 text-[11px] gap-1.5 px-2.5 ${filteredOrders.length > 0 ? "bg-emerald-600 hover:bg-emerald-700 text-white" : ""}`}
+            variant={filteredOrders.length > 0 ? "default" : "outline"}
           >
             <ClipboardListIcon className="size-3.5" />
             View DO
@@ -373,7 +351,7 @@ export function RefillTable({ machineId, items, prefilledStockIn, isEditable = t
           <DialogHeader>
             <DialogTitle>View DO - {machineId}</DialogTitle>
             <DialogDescription>
-              {filteredOrders.length} DO(s) with {filteredOrderLines.length} item line(s), total qty {totalQty}.
+              New DO from Ordering only ({filteredOrders.length}). Previous DO boleh tengok di halaman View DO.
             </DialogDescription>
           </DialogHeader>
 
@@ -391,67 +369,34 @@ export function RefillTable({ machineId, items, prefilledStockIn, isEditable = t
           </div>
 
           <div className="space-y-3 rounded-lg border bg-muted/20 px-3 py-3">
-            <div>
-              <p className="mb-2 text-[11px] font-semibold tracking-wide text-muted-foreground">
-                Current DO ({currentOrders.length})
-              </p>
-              <div className="flex flex-wrap gap-2">
-                {currentOrders.map((order) => (
-                  <button
-                    key={order.code}
-                    type="button"
-                    onClick={() => handleCopyCode(order.code)}
-                    className="inline-flex items-center gap-2 rounded-md border bg-background px-3 py-1.5 text-left text-xs shadow-sm transition hover:bg-muted"
-                    title="Click to copy DO code"
-                  >
-                    <span className="font-semibold text-muted-foreground">DO</span>
-                    <span className="font-mono font-bold tracking-wider">{order.code}</span>
-                    <span className="text-[10px] text-muted-foreground">Qty {orderTotalMap[order.code] ?? 0}</span>
-                    {copiedCode === order.code ? (
-                      <CheckIcon className="size-3.5 text-emerald-600" />
-                    ) : (
-                      <ClipboardCopyIcon className="size-3.5 text-muted-foreground" />
-                    )}
-                  </button>
-                ))}
-                {currentOrders.length === 0 && (
-                  <p className="text-xs text-muted-foreground">No current DO.</p>
-                )}
-              </div>
+            <p className="text-[11px] font-semibold tracking-wide text-muted-foreground">
+              New DO ({filteredOrders.length})
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {filteredOrders.map((order) => (
+                <button
+                  key={order.code}
+                  type="button"
+                  onClick={() => {
+                    setSelectedDoCode(order.code)
+                    void handleCopyCode(order.code)
+                  }}
+                  className={`inline-flex items-center gap-2 rounded-md border px-3 py-1.5 text-left text-xs shadow-sm transition hover:bg-muted ${selectedDoCode === order.code ? "bg-emerald-50 border-emerald-300 dark:bg-emerald-950/30" : "bg-background"}`}
+                  title="Click to copy DO code"
+                >
+                  <span className="font-semibold text-muted-foreground">DO</span>
+                  <span className="font-mono font-bold tracking-wider">{order.code}</span>
+                  {copiedCode === order.code ? (
+                    <CheckIcon className="size-3.5 text-emerald-600" />
+                  ) : (
+                    <ClipboardCopyIcon className="size-3.5 text-muted-foreground" />
+                  )}
+                </button>
+              ))}
+              {filteredOrders.length === 0 && (
+                <p className="text-xs text-muted-foreground">No new DO found for this machine.</p>
+              )}
             </div>
-
-            <div>
-              <p className="mb-2 text-[11px] font-semibold tracking-wide text-muted-foreground">
-                Previous DO ({previousOrders.length})
-              </p>
-              <div className="flex flex-wrap gap-2">
-                {previousOrders.map((order) => (
-                  <button
-                    key={order.code}
-                    type="button"
-                    onClick={() => handleCopyCode(order.code)}
-                    className="inline-flex items-center gap-2 rounded-md border bg-background px-3 py-1.5 text-left text-xs shadow-sm transition hover:bg-muted"
-                    title="Click to copy DO code"
-                  >
-                    <span className="font-semibold text-muted-foreground">DO</span>
-                    <span className="font-mono font-bold tracking-wider">{order.code}</span>
-                    <span className="text-[10px] text-muted-foreground">Qty {orderTotalMap[order.code] ?? 0}</span>
-                    {copiedCode === order.code ? (
-                      <CheckIcon className="size-3.5 text-emerald-600" />
-                    ) : (
-                      <ClipboardCopyIcon className="size-3.5 text-muted-foreground" />
-                    )}
-                  </button>
-                ))}
-                {previousOrders.length === 0 && (
-                  <p className="text-xs text-muted-foreground">No previous DO.</p>
-                )}
-              </div>
-            </div>
-
-            {filteredOrders.length === 0 && (
-              <p className="text-xs text-muted-foreground">No DO found for this machine.</p>
-            )}
           </div>
 
           <div className="max-h-[60vh] overflow-auto rounded-lg border">
@@ -463,11 +408,10 @@ export function RefillTable({ machineId, items, prefilledStockIn, isEditable = t
                   <TableHead className="text-left text-[11px] font-semibold tracking-wide py-2">Product</TableHead>
                   <TableHead className="text-left text-[11px] font-semibold tracking-wide py-2">Code</TableHead>
                   <TableHead className="text-right text-[11px] font-semibold tracking-wide py-2">Qty</TableHead>
-                  <TableHead className="text-right text-[11px] font-semibold tracking-wide py-2">Total Qty (DO)</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredOrderLines.map((item) => (
+                {selectedOrderLines.map((item) => (
                   <TableRow key={`${item.doCode}-${item.slot}-${item.productCode}`} className="h-9">
                     <TableCell className="py-1.5 font-mono font-bold tracking-wider">
                       {item.doCode}
@@ -478,21 +422,27 @@ export function RefillTable({ machineId, items, prefilledStockIn, isEditable = t
                     <TableCell className="py-1.5 font-medium">{item.productName}</TableCell>
                     <TableCell className="py-1.5 text-muted-foreground">{item.productCode}</TableCell>
                     <TableCell className="py-1.5 text-right font-semibold tabular-nums">{item.qty}</TableCell>
-                    <TableCell className="py-1.5 text-right font-semibold tabular-nums text-muted-foreground">
-                      {orderTotalMap[item.doCode] ?? 0}
-                    </TableCell>
                   </TableRow>
                 ))}
-                {filteredOrderLines.length === 0 && (
+                {selectedOrderLines.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={6} className="py-6 text-center text-muted-foreground">
-                      No item list for the selected DO filter.
+                    <TableCell colSpan={5} className="py-6 text-center text-muted-foreground">
+                      Pilih satu DO code untuk tengok item list.
                     </TableCell>
                   </TableRow>
                 )}
               </TableBody>
             </Table>
           </div>
+
+          {selectedOrder && (
+            <div className="flex items-center justify-between rounded-lg border bg-muted/20 px-3 py-2 text-xs">
+              <span className="text-muted-foreground">
+                Showing DO code: <span className="font-mono font-semibold text-foreground">{selectedOrder.code}</span>
+              </span>
+              <span className="font-semibold tabular-nums">Total Qty: {selectedOrderTotalQty}</span>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>
