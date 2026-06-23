@@ -44,12 +44,35 @@ export function HomeContent() {
     return Object.fromEntries(activeDO.items.map((i) => [i.slot, i.qty]))
   }, [activeDO])
 
+  function resetMachineRefillInputs() {
+    if (!selectedMachine) return
+
+    const resetMap: RefillDataMap = Object.fromEntries(
+      Object.entries(refillData).map(([machineId, machineItems]) => {
+        if (machineId !== selectedMachine) return [machineId, machineItems]
+        const resetItems = machineItems.map((item) => ({
+          ...item,
+          stockIn: 0,
+          overflow: 0,
+          stockOut: 0,
+        }))
+        return [machineId, resetItems]
+      })
+    )
+
+    saveRefillData(resetMap).then(() => {
+      setRefillData(resetMap)
+    })
+  }
+
   function handleStartRefill() {
     setRefillStarted(true)
     setDoCode("")
     setDoError("")
     setActiveDO(null)
     setRefillComplete(false)
+    setTableValues({})
+    resetMachineRefillInputs()
   }
 
   function handleCancelRefill() {
@@ -59,6 +82,7 @@ export function HomeContent() {
     setActiveDO(null)
     setRefillComplete(false)
     setTableValues({})
+    resetMachineRefillInputs()
   }
 
   function handleMachineChange(val: string) {
@@ -120,9 +144,9 @@ export function HomeContent() {
 
           return {
             ...item,
-            stockIn: row.stockIn,
-            overflow: row.overflow,
-            stockOut: row.stockOut,
+            stockIn: 0,
+            overflow: 0,
+            stockOut: 0,
             currentInventory: nextInventory,
           }
         })

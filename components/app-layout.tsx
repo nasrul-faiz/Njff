@@ -14,6 +14,7 @@ import {
   ServerIcon,
   LayoutGridIcon,
   PackageIcon,
+  SearchIcon,
 } from "lucide-react"
 import {
   DropdownMenu,
@@ -74,6 +75,7 @@ const workspaces = [
 
 const defaultNavItems = [
   { title: "Home", icon: HomeIcon, url: "/home" },
+  { title: "View DO", icon: SearchIcon, url: "/view-do" },
   { title: "Inbox", icon: InboxIcon, url: "/inbox" },
   { title: "Calendar", icon: CalendarIcon, url: "/calendar" },
   { title: "Team", icon: UsersIcon, url: "/team" },

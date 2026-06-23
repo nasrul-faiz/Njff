@@ -52,10 +52,31 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ ...order, items: itemsResult.rows })
     }
 
-    // Get all delivery orders
-    const result = await dbQuery<DeliveryOrder>(
-      "SELECT code, machine_id, machine_label, date, status FROM delivery_orders ORDER BY created_at DESC"
-    )
+    // Get all delivery orders with their line items
+    const result = await dbQuery<DeliveryOrder>(`
+      SELECT
+        o.code,
+        o.machine_id,
+        o.machine_label,
+        o.date,
+        o.status,
+        COALESCE(
+          json_agg(
+            json_build_object(
+              'slot', i.slot,
+              'productCode', i.product_code,
+              'productName', i.product_name,
+              'qty', i.qty
+            )
+            ORDER BY i.slot
+          ) FILTER (WHERE i.id IS NOT NULL),
+          '[]'::json
+        ) AS items
+      FROM delivery_orders o
+      LEFT JOIN delivery_order_items i ON i.delivery_order_id = o.id
+      GROUP BY o.id
+      ORDER BY o.created_at DESC
+    `)
 
     return NextResponse.json(result.rows)
   } catch (error) {

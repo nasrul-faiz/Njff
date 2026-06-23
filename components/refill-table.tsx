@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { ClipboardListIcon } from "lucide-react"
+import { CheckIcon, ClipboardCopyIcon, ClipboardListIcon } from "lucide-react"
 import { ImageLightbox } from "@/components/image-lightbox"
 import { getAllDOs, DELIVERY_ORDERS_STORAGE_KEY, DELIVERY_ORDERS_UPDATED_EVENT, type DeliveryOrder } from "@/lib/do-store"
 import {
@@ -53,6 +53,8 @@ const inputCls =
 export function RefillTable({ machineId, items, prefilledStockIn, isEditable = true, onValuesChange }: RefillTableProps) {
   const [allOrders, setAllOrders] = React.useState<DeliveryOrder[]>([])
   const [isViewDOpen, setIsViewDOOpen] = React.useState(false)
+  const [copiedCode, setCopiedCode] = React.useState("")
+  const [doCodeFilter, setDoCodeFilter] = React.useState("")
 
   React.useEffect(() => {
     async function reloadOrders() {
@@ -76,44 +78,68 @@ export function RefillTable({ machineId, items, prefilledStockIn, isEditable = t
     }
   }, [])
 
-  const todayKey = new Date().toISOString().slice(0, 10)
-  const todaysOrders = React.useMemo(
+  const machineOrders = React.useMemo(
     () =>
-      allOrders.filter(
-        (order) => order.machineId === machineId && order.date.slice(0, 10) === todayKey
-      ),
-    [allOrders, machineId, todayKey]
+      allOrders
+        .filter((order) => order.machineId === machineId)
+        .sort((a, b) => {
+          if (a.status !== b.status) {
+            return a.status === "pending" ? -1 : 1
+          }
+          return b.date.localeCompare(a.date)
+        }),
+    [allOrders, machineId]
   )
 
-  const todaysItemSummary = React.useMemo(() => {
-    const map = new Map<
-      string,
-      { slot: string; productCode: string; productName: string; qty: number }
-    >()
-    todaysOrders.forEach((order) => {
-      order.items.forEach((item) => {
-        const key = `${item.slot}-${item.productCode}`
-        const existing = map.get(key)
-        if (existing) {
-          existing.qty += item.qty
-        } else {
-          map.set(key, {
-            slot: item.slot,
-            productCode: item.productCode,
-            productName: item.productName,
-            qty: item.qty,
-          })
-        }
-      })
-    })
-
-    return Array.from(map.values()).sort((a, b) =>
-      a.slot.localeCompare(b.slot, undefined, { numeric: true, sensitivity: "base" })
+  const filteredOrders = React.useMemo(() => {
+    const keyword = doCodeFilter.trim().toUpperCase()
+    if (!keyword) return machineOrders
+    return machineOrders.filter((order) =>
+      order.code.toUpperCase().includes(keyword)
     )
-  }, [todaysOrders])
+  }, [machineOrders, doCodeFilter])
+
+  const filteredOrderLines = React.useMemo(
+    () =>
+      filteredOrders
+        .flatMap((order) =>
+        order.items.map((item) => ({
+          doCode: order.code,
+          slot: item.slot,
+          productCode: item.productCode,
+          productName: item.productName,
+          qty: item.qty,
+        }))
+      )
+      .sort((a, b) => {
+        const codeCompare = a.doCode.localeCompare(b.doCode, undefined, {
+          numeric: true,
+          sensitivity: "base",
+        })
+        if (codeCompare !== 0) return codeCompare
+
+        return a.slot.localeCompare(b.slot, undefined, {
+          numeric: true,
+          sensitivity: "base",
+        })
+      }),
+    [filteredOrders]
+  )
   const readonlyInputCls = !isEditable
     ? "text-muted-foreground disabled:text-muted-foreground disabled:opacity-100"
     : ""
+
+  async function handleCopyCode(code: string) {
+    try {
+      await navigator.clipboard.writeText(code)
+      setCopiedCode(code)
+      window.setTimeout(() => {
+        setCopiedCode((current) => (current === code ? "" : current))
+      }, 1200)
+    } catch {
+      setCopiedCode("")
+    }
+  }
 
   const sortedItems = React.useMemo(
     () =>
@@ -190,10 +216,9 @@ export function RefillTable({ machineId, items, prefilledStockIn, isEditable = t
           <Button
             type="button"
             size="sm"
-            disabled={todaysOrders.length === 0}
             onClick={() => setIsViewDOOpen(true)}
-            className={`h-7 text-[11px] gap-1.5 px-2.5 ${todaysOrders.length > 0 ? "bg-emerald-600 hover:bg-emerald-700 text-white" : ""}`}
-            variant={todaysOrders.length > 0 ? "default" : "outline"}
+            className={`h-7 text-[11px] gap-1.5 px-2.5 ${machineOrders.length > 0 ? "bg-emerald-600 hover:bg-emerald-700 text-white" : ""}`}
+            variant={machineOrders.length > 0 ? "default" : "outline"}
           >
             <ClipboardListIcon className="size-3.5" />
             View DO
@@ -315,16 +340,54 @@ export function RefillTable({ machineId, items, prefilledStockIn, isEditable = t
       <Dialog open={isViewDOpen} onOpenChange={setIsViewDOOpen}>
         <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
-            <DialogTitle>DO List Today - {machineId}</DialogTitle>
+            <DialogTitle>View DO - {machineId}</DialogTitle>
             <DialogDescription>
-              {todaysOrders.length} generated DO(s) with {todaysItemSummary.length} item line(s).
+              {filteredOrders.length} DO(s) with {filteredOrderLines.length} item line(s).
             </DialogDescription>
           </DialogHeader>
 
+          <div className="rounded-lg border bg-muted/20 px-3 py-3">
+            <label className="mb-1.5 block text-[11px] font-semibold tracking-wide text-muted-foreground">
+              Paste DO code to filter
+            </label>
+            <input
+              type="text"
+              value={doCodeFilter}
+              onChange={(event) => setDoCodeFilter(event.target.value.toUpperCase())}
+              placeholder="e.g. DO-260623-001"
+              className="w-full rounded-md border bg-background px-3 py-1.5 text-xs font-mono tracking-wider focus:outline-none focus:ring-1 focus:ring-ring"
+            />
+          </div>
+
+          <div className="flex flex-wrap gap-2 rounded-lg border bg-muted/20 px-3 py-3">
+            {filteredOrders.map((order) => (
+              <button
+                key={order.code}
+                type="button"
+                onClick={() => handleCopyCode(order.code)}
+                className="inline-flex items-center gap-2 rounded-md border bg-background px-3 py-1.5 text-left text-xs shadow-sm transition hover:bg-muted"
+                title="Click to copy DO code"
+              >
+                <span className="font-semibold text-muted-foreground">DO</span>
+                <span className="font-mono font-bold tracking-wider">{order.code}</span>
+                <span className="text-[10px] text-muted-foreground uppercase">{order.status}</span>
+                {copiedCode === order.code ? (
+                  <CheckIcon className="size-3.5 text-emerald-600" />
+                ) : (
+                  <ClipboardCopyIcon className="size-3.5 text-muted-foreground" />
+                )}
+              </button>
+            ))}
+            {filteredOrders.length === 0 && (
+              <p className="text-xs text-muted-foreground">No DO found for this machine.</p>
+            )}
+          </div>
+
           <div className="max-h-[60vh] overflow-auto rounded-lg border">
-            <Table className="text-xs min-w-[620px]">
+            <Table className="text-xs min-w-[780px]">
               <TableHeader>
                 <TableRow className="hover:bg-transparent">
+                  <TableHead className="text-left text-[11px] font-semibold tracking-wide py-2">DO Code</TableHead>
                   <TableHead className="text-center text-[11px] font-semibold tracking-wide py-2">Slot</TableHead>
                   <TableHead className="text-left text-[11px] font-semibold tracking-wide py-2">Product</TableHead>
                   <TableHead className="text-left text-[11px] font-semibold tracking-wide py-2">Code</TableHead>
@@ -332,8 +395,11 @@ export function RefillTable({ machineId, items, prefilledStockIn, isEditable = t
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {todaysItemSummary.map((item) => (
-                  <TableRow key={`${item.slot}-${item.productCode}`} className="h-9">
+                {filteredOrderLines.map((item) => (
+                  <TableRow key={`${item.doCode}-${item.slot}-${item.productCode}`} className="h-9">
+                    <TableCell className="py-1.5 font-mono font-bold tracking-wider">
+                      {item.doCode}
+                    </TableCell>
                     <TableCell className="text-center py-1.5">
                       <span className="font-mono font-bold tracking-wider">{item.slot}</span>
                     </TableCell>
@@ -342,10 +408,10 @@ export function RefillTable({ machineId, items, prefilledStockIn, isEditable = t
                     <TableCell className="py-1.5 text-right font-semibold tabular-nums">{item.qty}</TableCell>
                   </TableRow>
                 ))}
-                {todaysItemSummary.length === 0 && (
+                {filteredOrderLines.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={4} className="py-6 text-center text-muted-foreground">
-                      No orders for this machine today.
+                    <TableCell colSpan={5} className="py-6 text-center text-muted-foreground">
+                      No item list for the selected DO filter.
                     </TableCell>
                   </TableRow>
                 )}
