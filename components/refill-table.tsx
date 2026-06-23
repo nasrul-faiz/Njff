@@ -99,6 +99,26 @@ export function RefillTable({ machineId, items, prefilledStockIn, isEditable = t
     )
   }, [machineOrders, doCodeFilter])
 
+  const currentOrders = React.useMemo(
+    () => filteredOrders.filter((order) => order.status === "pending"),
+    [filteredOrders]
+  )
+
+  const previousOrders = React.useMemo(
+    () => filteredOrders.filter((order) => order.status === "completed"),
+    [filteredOrders]
+  )
+
+  const totalQty = React.useMemo(
+    () =>
+      filteredOrders.reduce(
+        (sum, order) =>
+          sum + order.items.reduce((itemSum, item) => itemSum + item.qty, 0),
+        0
+      ),
+    [filteredOrders]
+  )
+
   const filteredOrderLines = React.useMemo(
     () =>
       filteredOrders
@@ -123,6 +143,17 @@ export function RefillTable({ machineId, items, prefilledStockIn, isEditable = t
           sensitivity: "base",
         })
       }),
+    [filteredOrders]
+  )
+
+  const orderTotalMap = React.useMemo(
+    () =>
+      Object.fromEntries(
+        filteredOrders.map((order) => [
+          order.code,
+          order.items.reduce((sum, item) => sum + item.qty, 0),
+        ])
+      ),
     [filteredOrders]
   )
   const readonlyInputCls = !isEditable
@@ -342,7 +373,7 @@ export function RefillTable({ machineId, items, prefilledStockIn, isEditable = t
           <DialogHeader>
             <DialogTitle>View DO - {machineId}</DialogTitle>
             <DialogDescription>
-              {filteredOrders.length} DO(s) with {filteredOrderLines.length} item line(s).
+              {filteredOrders.length} DO(s) with {filteredOrderLines.length} item line(s), total qty {totalQty}.
             </DialogDescription>
           </DialogHeader>
 
@@ -359,25 +390,65 @@ export function RefillTable({ machineId, items, prefilledStockIn, isEditable = t
             />
           </div>
 
-          <div className="flex flex-wrap gap-2 rounded-lg border bg-muted/20 px-3 py-3">
-            {filteredOrders.map((order) => (
-              <button
-                key={order.code}
-                type="button"
-                onClick={() => handleCopyCode(order.code)}
-                className="inline-flex items-center gap-2 rounded-md border bg-background px-3 py-1.5 text-left text-xs shadow-sm transition hover:bg-muted"
-                title="Click to copy DO code"
-              >
-                <span className="font-semibold text-muted-foreground">DO</span>
-                <span className="font-mono font-bold tracking-wider">{order.code}</span>
-                <span className="text-[10px] text-muted-foreground uppercase">{order.status}</span>
-                {copiedCode === order.code ? (
-                  <CheckIcon className="size-3.5 text-emerald-600" />
-                ) : (
-                  <ClipboardCopyIcon className="size-3.5 text-muted-foreground" />
+          <div className="space-y-3 rounded-lg border bg-muted/20 px-3 py-3">
+            <div>
+              <p className="mb-2 text-[11px] font-semibold tracking-wide text-muted-foreground">
+                Current DO ({currentOrders.length})
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {currentOrders.map((order) => (
+                  <button
+                    key={order.code}
+                    type="button"
+                    onClick={() => handleCopyCode(order.code)}
+                    className="inline-flex items-center gap-2 rounded-md border bg-background px-3 py-1.5 text-left text-xs shadow-sm transition hover:bg-muted"
+                    title="Click to copy DO code"
+                  >
+                    <span className="font-semibold text-muted-foreground">DO</span>
+                    <span className="font-mono font-bold tracking-wider">{order.code}</span>
+                    <span className="text-[10px] text-muted-foreground">Qty {orderTotalMap[order.code] ?? 0}</span>
+                    {copiedCode === order.code ? (
+                      <CheckIcon className="size-3.5 text-emerald-600" />
+                    ) : (
+                      <ClipboardCopyIcon className="size-3.5 text-muted-foreground" />
+                    )}
+                  </button>
+                ))}
+                {currentOrders.length === 0 && (
+                  <p className="text-xs text-muted-foreground">No current DO.</p>
                 )}
-              </button>
-            ))}
+              </div>
+            </div>
+
+            <div>
+              <p className="mb-2 text-[11px] font-semibold tracking-wide text-muted-foreground">
+                Previous DO ({previousOrders.length})
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {previousOrders.map((order) => (
+                  <button
+                    key={order.code}
+                    type="button"
+                    onClick={() => handleCopyCode(order.code)}
+                    className="inline-flex items-center gap-2 rounded-md border bg-background px-3 py-1.5 text-left text-xs shadow-sm transition hover:bg-muted"
+                    title="Click to copy DO code"
+                  >
+                    <span className="font-semibold text-muted-foreground">DO</span>
+                    <span className="font-mono font-bold tracking-wider">{order.code}</span>
+                    <span className="text-[10px] text-muted-foreground">Qty {orderTotalMap[order.code] ?? 0}</span>
+                    {copiedCode === order.code ? (
+                      <CheckIcon className="size-3.5 text-emerald-600" />
+                    ) : (
+                      <ClipboardCopyIcon className="size-3.5 text-muted-foreground" />
+                    )}
+                  </button>
+                ))}
+                {previousOrders.length === 0 && (
+                  <p className="text-xs text-muted-foreground">No previous DO.</p>
+                )}
+              </div>
+            </div>
+
             {filteredOrders.length === 0 && (
               <p className="text-xs text-muted-foreground">No DO found for this machine.</p>
             )}
@@ -392,6 +463,7 @@ export function RefillTable({ machineId, items, prefilledStockIn, isEditable = t
                   <TableHead className="text-left text-[11px] font-semibold tracking-wide py-2">Product</TableHead>
                   <TableHead className="text-left text-[11px] font-semibold tracking-wide py-2">Code</TableHead>
                   <TableHead className="text-right text-[11px] font-semibold tracking-wide py-2">Qty</TableHead>
+                  <TableHead className="text-right text-[11px] font-semibold tracking-wide py-2">Total Qty (DO)</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -406,11 +478,14 @@ export function RefillTable({ machineId, items, prefilledStockIn, isEditable = t
                     <TableCell className="py-1.5 font-medium">{item.productName}</TableCell>
                     <TableCell className="py-1.5 text-muted-foreground">{item.productCode}</TableCell>
                     <TableCell className="py-1.5 text-right font-semibold tabular-nums">{item.qty}</TableCell>
+                    <TableCell className="py-1.5 text-right font-semibold tabular-nums text-muted-foreground">
+                      {orderTotalMap[item.doCode] ?? 0}
+                    </TableCell>
                   </TableRow>
                 ))}
                 {filteredOrderLines.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={5} className="py-6 text-center text-muted-foreground">
+                    <TableCell colSpan={6} className="py-6 text-center text-muted-foreground">
                       No item list for the selected DO filter.
                     </TableCell>
                   </TableRow>
