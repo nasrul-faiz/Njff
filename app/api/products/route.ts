@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import type { NextRequest } from "next/server"
 import { dbQuery, getDbPool } from "@/lib/db"
+import { ensureProductsSchema } from "@/lib/db-schema"
 
 export const runtime = "nodejs"
 
@@ -13,6 +14,8 @@ interface Product {
 
 export async function GET() {
   try {
+    await ensureProductsSchema()
+
     const result = await dbQuery<Product>(
       "SELECT id, product_code, product_name, COALESCE(image, '') AS image FROM products ORDER BY product_code ASC"
     )
@@ -27,6 +30,8 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
+    await ensureProductsSchema()
+
     const { product_code, product_name, image = "" }: Product = await request.json()
 
     if (!product_code || !product_name) {
@@ -53,6 +58,8 @@ export async function POST(request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   try {
+    await ensureProductsSchema()
+
     const payload = await request.json()
 
     if (Array.isArray(payload)) {
@@ -130,6 +137,8 @@ export async function PUT(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
+    await ensureProductsSchema()
+
     const { searchParams } = new URL(request.url)
     const id = searchParams.get("id")
     const productCode = searchParams.get("product_code")
