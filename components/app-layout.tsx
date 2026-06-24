@@ -2,10 +2,7 @@
 
 import {
   HomeIcon,
-  CalendarIcon,
-  UsersIcon,
   SettingsIcon,
-  InboxIcon,
   ChevronsUpDownIcon,
   CheckIcon,
   RefreshCwIcon,
@@ -73,12 +70,14 @@ const workspaces = [
   },
 ]
 
-const defaultNavItems = [
-  { title: "Home", icon: HomeIcon, url: "/home" },
+const refillNavItems = [
+  { title: "Refill Service", icon: HomeIcon, url: "/home" },
   { title: "View DO", icon: SearchIcon, url: "/view-do" },
-  { title: "Inbox", icon: InboxIcon, url: "/inbox" },
-  { title: "Calendar", icon: CalendarIcon, url: "/calendar" },
-  { title: "Team", icon: UsersIcon, url: "/team" },
+]
+
+const orderingNavItems = [
+  { title: "Ordering", icon: HomeIcon, url: "/ordering" },
+  { title: "View DO", icon: SearchIcon, url: "/view-do" },
 ]
 
 const editNavItems = [
@@ -100,7 +99,12 @@ export function AppLayout({ title, children }: AppLayoutProps) {
 
   const activeWorkspace =
     workspaces.find((ws) => pathname.startsWith(ws.url)) ?? workspaces[0]
-  const navItems = activeWorkspace.id === "edit" ? editNavItems : defaultNavItems
+  const navItems =
+    activeWorkspace.id === "edit"
+      ? editNavItems
+      : activeWorkspace.id === "ordering"
+        ? orderingNavItems
+        : refillNavItems
   const sidebarDefaultOpen = activeWorkspace.id !== "edit"
 
   return (
