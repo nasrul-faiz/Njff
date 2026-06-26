@@ -20,6 +20,13 @@ import {
 import { getAllDOs, type DeliveryOrder } from "@/lib/do-store"
 import { getRefillData, type RefillDataMap } from "@/lib/refill-store"
 import type { RefillItem } from "@/components/refill-table"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 
 function formatDate(dateStr: string) {
   const d = new Date(dateStr)
@@ -162,141 +169,145 @@ function DODetailSheet({
   )
 
   return (
-    <div className="rounded-xl border bg-card overflow-hidden">
-      <div className="px-4 py-3 border-b bg-muted/40 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <CheckCircleIcon className="size-4 text-emerald-600" />
-          <span className="text-sm font-semibold">DO Detail</span>
-        </div>
-        <button
-          onClick={onClose}
-          className="rounded p-1 hover:bg-muted text-muted-foreground"
-        >
-          <XIcon className="size-3.5" />
-        </button>
-      </div>
+    <Dialog open onOpenChange={(open) => { if (!open) onClose() }}>
+      <DialogContent
+        showCloseButton
+        className="!top-0 !left-0 !h-screen !w-screen !max-w-none !translate-x-0 !translate-y-0 rounded-none p-0"
+      >
+        <div className="flex h-full flex-col bg-card">
+          <DialogHeader className="border-b bg-muted/30 px-6 py-4 pr-14">
+            <div className="flex items-center gap-2">
+              <CheckCircleIcon className="size-4 text-emerald-600" />
+              <DialogTitle>DO Detail</DialogTitle>
+            </div>
+            <DialogDescription>
+              {order.code} • {order.machineId} ({order.machineLabel}) • {formatDate(order.date)} {formatTime(order.date)}
+            </DialogDescription>
+            <div className="grid grid-cols-2 gap-4 pt-2 text-xs sm:grid-cols-4">
+              <div>
+                <p className="text-[10px] text-muted-foreground font-semibold tracking-widest uppercase mb-0.5">
+                  DO Code
+                </p>
+                <p className="font-mono font-bold">{order.code}</p>
+              </div>
+              <div>
+                <p className="text-[10px] text-muted-foreground font-semibold tracking-widest uppercase mb-0.5">
+                  Machine
+                </p>
+                <p className="font-bold">{order.machineId}</p>
+                <p className="text-muted-foreground">{order.machineLabel}</p>
+              </div>
+              <div>
+                <p className="text-[10px] text-muted-foreground font-semibold tracking-widest uppercase mb-0.5">
+                  Date
+                </p>
+                <p className="font-medium">{formatDate(order.date)}</p>
+                <p className="text-muted-foreground">{formatTime(order.date)}</p>
+              </div>
+              <div>
+                <p className="text-[10px] text-muted-foreground font-semibold tracking-widest uppercase mb-0.5">
+                  Status
+                </p>
+                <span
+                  className={`inline-flex px-2 py-0.5 rounded text-[10px] font-semibold ${
+                    order.status === "completed"
+                      ? "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400"
+                      : "bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400"
+                  }`}
+                >
+                  {order.status}
+                </span>
+              </div>
+            </div>
+          </DialogHeader>
 
-      <div className="px-4 py-3 grid grid-cols-2 gap-4 border-b bg-muted/20 text-xs">
-        <div>
-          <p className="text-[10px] text-muted-foreground font-semibold tracking-widest uppercase mb-0.5">
-            DO Code
-          </p>
-          <p className="font-mono font-bold">{order.code}</p>
-        </div>
-        <div>
-          <p className="text-[10px] text-muted-foreground font-semibold tracking-widest uppercase mb-0.5">
-            Machine
-          </p>
-          <p className="font-bold">
-            {order.machineId}{" "}
-            <span className="text-muted-foreground font-normal">
-              ({order.machineLabel})
-            </span>
-          </p>
-        </div>
-        <div>
-          <p className="text-[10px] text-muted-foreground font-semibold tracking-widest uppercase mb-0.5">
-            Date
-          </p>
-          <p className="font-medium">{formatDate(order.date)}</p>
-        </div>
-        <div>
-          <p className="text-[10px] text-muted-foreground font-semibold tracking-widest uppercase mb-0.5">
-            Status
-          </p>
-          <span
-            className={`px-2 py-0.5 rounded text-[10px] font-semibold ${
-              order.status === "completed"
-                ? "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400"
-                : "bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400"
-            }`}
-          >
-            {order.status}
-          </span>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-2 gap-px border-b bg-border sm:grid-cols-5">
-        {[
-          { label: "Order Qty", value: totals.qty },
-          { label: "Stock In", value: totals.stockIn },
-          { label: "Overflow", value: totals.overflow },
-          { label: "Stock Out", value: totals.stockOut },
-          { label: "Inventory", value: totals.currentInventory },
-        ].map((item) => (
-          <div key={item.label} className="bg-card px-4 py-3 text-xs">
-            <p className="text-[10px] font-semibold tracking-widest uppercase text-muted-foreground">
-              {item.label}
-            </p>
-            <p className="mt-1 font-bold tabular-nums">{item.value}</p>
+          <div className="min-h-0 flex-1 overflow-auto">
+            <Table className="text-xs min-w-[920px]">
+              <TableHeader>
+                <TableRow className="hover:bg-transparent">
+                  <TableHead className="text-center text-[11px] font-semibold tracking-wide py-2">Slot</TableHead>
+                  <TableHead className="text-center text-[11px] font-semibold tracking-wide py-2"></TableHead>
+                  <TableHead className="text-center text-[11px] font-semibold tracking-wide py-2">Product Name</TableHead>
+                  <TableHead className="text-center text-[11px] font-semibold tracking-wide py-2">DO Qty</TableHead>
+                  <TableHead className="text-center text-[11px] font-semibold tracking-wide py-2">Stock In</TableHead>
+                  <TableHead className="text-center text-[11px] font-semibold tracking-wide py-2">Overflow</TableHead>
+                  <TableHead className="text-center text-[11px] font-semibold tracking-wide py-2">Stock Out</TableHead>
+                  <TableHead className="text-center text-[11px] font-semibold tracking-wide py-2">Inventory</TableHead>
+                  <TableHead className="text-center text-[11px] font-semibold tracking-wide py-2">Max</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {detailRows.map((item) => (
+                  <TableRow key={`${item.slot}-${item.productCode}`} className="h-9">
+                    <TableCell className="text-center py-1.5">
+                      <span className="font-mono font-bold tracking-wider">{item.slot}</span>
+                    </TableCell>
+                    <TableCell className="text-center py-1.5 px-1.5">
+                      <div className="h-8 w-8 mx-auto rounded-md overflow-hidden border bg-muted">
+                        {item.image ? (
+                          <img src={item.image} alt={item.productName} className="h-full w-full object-cover" />
+                        ) : null}
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-center py-1.5 font-medium">
+                      <p className="truncate">{item.productName}</p>
+                      <p className="text-[10px] text-muted-foreground">{item.productCode}</p>
+                    </TableCell>
+                    <TableCell className="text-center py-1.5 font-semibold tabular-nums">
+                      {item.qty}
+                    </TableCell>
+                    <TableCell className="text-center py-1.5 tabular-nums text-muted-foreground">
+                      {item.stockIn}
+                    </TableCell>
+                    <TableCell className="text-center py-1.5 tabular-nums text-muted-foreground">
+                      {item.overflow}
+                    </TableCell>
+                    <TableCell className="text-center py-1.5 tabular-nums text-muted-foreground">
+                      {item.stockOut}
+                    </TableCell>
+                    <TableCell className="text-center py-1.5 tabular-nums text-muted-foreground">
+                      {item.currentInventory}
+                    </TableCell>
+                    <TableCell className="text-center py-1.5 tabular-nums text-muted-foreground">
+                      {item.maxCapacity}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
           </div>
-        ))}
-      </div>
 
-      <div className="max-h-[420px] overflow-auto">
-        <Table className="text-xs min-w-[920px]">
-          <TableHeader>
-            <TableRow className="hover:bg-transparent">
-              <TableHead className="text-center text-[11px] font-semibold tracking-wide py-2">Slot</TableHead>
-              <TableHead className="text-center text-[11px] font-semibold tracking-wide py-2"></TableHead>
-              <TableHead className="text-center text-[11px] font-semibold tracking-wide py-2">Product Name</TableHead>
-              <TableHead className="text-center text-[11px] font-semibold tracking-wide py-2">DO Qty</TableHead>
-              <TableHead className="text-center text-[11px] font-semibold tracking-wide py-2">Stock In</TableHead>
-              <TableHead className="text-center text-[11px] font-semibold tracking-wide py-2">Overflow</TableHead>
-              <TableHead className="text-center text-[11px] font-semibold tracking-wide py-2">Stock Out</TableHead>
-              <TableHead className="text-center text-[11px] font-semibold tracking-wide py-2">Inventory</TableHead>
-              <TableHead className="text-center text-[11px] font-semibold tracking-wide py-2">Max</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {detailRows.map((item) => (
-              <TableRow key={`${item.slot}-${item.productCode}`} className="h-9">
-                <TableCell className="text-center py-1.5">
-                  <span className="font-mono font-bold tracking-wider">{item.slot}</span>
-                </TableCell>
-                <TableCell className="text-center py-1.5 px-1.5">
-                  <div className="h-8 w-8 mx-auto rounded-md overflow-hidden border bg-muted">
-                    {item.image ? (
-                      <img src={item.image} alt={item.productName} className="h-full w-full object-cover" />
-                    ) : null}
-                  </div>
-                </TableCell>
-                <TableCell className="text-center py-1.5 font-medium">
-                  <p className="truncate">{item.productName}</p>
-                  <p className="text-[10px] text-muted-foreground">{item.productCode}</p>
-                </TableCell>
-                <TableCell className="text-center py-1.5 font-semibold tabular-nums">
-                  {item.qty}
-                </TableCell>
-                <TableCell className="text-center py-1.5 tabular-nums text-muted-foreground">
-                  {item.stockIn}
-                </TableCell>
-                <TableCell className="text-center py-1.5 tabular-nums text-muted-foreground">
-                  {item.overflow}
-                </TableCell>
-                <TableCell className="text-center py-1.5 tabular-nums text-muted-foreground">
-                  {item.stockOut}
-                </TableCell>
-                <TableCell className="text-center py-1.5 tabular-nums text-muted-foreground">
-                  {item.currentInventory}
-                </TableCell>
-                <TableCell className="text-center py-1.5 tabular-nums text-muted-foreground">
-                  {item.maxCapacity}
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </div>
-
-      <div className="px-4 py-3 border-t bg-muted/20 flex items-center justify-between text-xs">
-        <span className="text-muted-foreground">{detailRows.length} items</span>
-        <div className="flex items-center gap-2">
-          <span className="text-muted-foreground">Total units:</span>
-          <span className="font-bold tabular-nums">{totals.qty}</span>
+          <div className="sticky bottom-0 border-t bg-muted/95 px-6 py-4 text-xs backdrop-blur supports-[backdrop-filter]:bg-muted/75">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-6">
+              <div>
+                <p className="text-[10px] font-semibold tracking-widest uppercase text-muted-foreground">Items</p>
+                <p className="mt-1 font-bold tabular-nums">{detailRows.length}</p>
+              </div>
+              <div>
+                <p className="text-[10px] font-semibold tracking-widest uppercase text-muted-foreground">Order Qty</p>
+                <p className="mt-1 font-bold tabular-nums">{totals.qty}</p>
+              </div>
+              <div>
+                <p className="text-[10px] font-semibold tracking-widest uppercase text-muted-foreground">Stock In</p>
+                <p className="mt-1 font-bold tabular-nums">{totals.stockIn}</p>
+              </div>
+              <div>
+                <p className="text-[10px] font-semibold tracking-widest uppercase text-muted-foreground">Overflow</p>
+                <p className="mt-1 font-bold tabular-nums">{totals.overflow}</p>
+              </div>
+              <div>
+                <p className="text-[10px] font-semibold tracking-widest uppercase text-muted-foreground">Stock Out</p>
+                <p className="mt-1 font-bold tabular-nums">{totals.stockOut}</p>
+              </div>
+              <div>
+                <p className="text-[10px] font-semibold tracking-widest uppercase text-muted-foreground">Inventory</p>
+                <p className="mt-1 font-bold tabular-nums">{totals.currentInventory}</p>
+              </div>
+            </div>
+          </div>
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   )
 }
 
