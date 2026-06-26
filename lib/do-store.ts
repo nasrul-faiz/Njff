@@ -2,6 +2,7 @@ export interface DOItem {
   slot: string
   productCode: string
   productName: string
+  image?: string
   qty: number
 }
 
@@ -25,7 +26,7 @@ function emitDeliveryOrdersUpdated(): void {
 export function generateDOCode(): string {
   const now = new Date()
   const date = now.toISOString().slice(2, 10).replace(/-/g, "")
-  const seq = Math.random().toString(36).substring(7).toUpperCase()
+  const seq = Math.random().toString(36).slice(2, 7).toUpperCase()
   return `DO-${date}-${seq}`
 }
 
@@ -62,7 +63,13 @@ export async function getAllDOs(): Promise<DeliveryOrder[]> {
         machineLabel: order.machine_label,
         date: order.date,
         status: order.status,
-        items: order.items || [],
+        items: (order.items || []).map((i: any) => ({
+          slot: i.slot,
+          productCode: i.productCode,
+          productName: i.productName,
+          image: i.image ?? "",
+          qty: i.qty,
+        })),
       })
     )
   } catch (error) {
@@ -84,7 +91,13 @@ export async function getDOByCode(code: string): Promise<DeliveryOrder | null> {
       machineLabel: order.machine_label,
       date: order.date,
       status: order.status,
-      items: order.items || [],
+      items: (order.items || []).map((i: any) => ({
+        slot: i.slot,
+        productCode: i.productCode,
+        productName: i.productName,
+        image: i.image ?? "",
+        qty: i.qty,
+      })),
     }
   } catch (error) {
     console.error("Error fetching delivery order:", error)

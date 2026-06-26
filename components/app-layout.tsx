@@ -12,6 +12,7 @@ import {
   LayoutGridIcon,
   PackageIcon,
   SearchIcon,
+  ChevronRightIcon,
 } from "lucide-react"
 import {
   DropdownMenu,
@@ -216,9 +217,18 @@ export function AppLayout({ title, children }: AppLayoutProps) {
       </Sidebar>
 
       <SidebarInset>
-        <header className="sticky top-0 z-20 flex h-14 items-center gap-2 border-b bg-background/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/70">
+        <header className="sticky top-0 z-20 flex h-14 items-center gap-3 border-b bg-background/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/70">
           <SidebarTrigger />
-          <h1 className="font-semibold">{title}</h1>
+          <div className="w-px h-4 bg-border shrink-0" />
+          <nav className="flex items-center gap-1.5 text-sm min-w-0">
+            <span className="text-muted-foreground shrink-0">{activeWorkspace.name}</span>
+            {title !== activeWorkspace.name && (
+              <>
+                <ChevronRightIcon className="size-3.5 text-muted-foreground/50 shrink-0" />
+                <span className="font-semibold truncate">{title}</span>
+              </>
+            )}
+          </nav>
         </header>
         <main className="flex flex-1 flex-col gap-4 p-6">{children}</main>
       </SidebarInset>

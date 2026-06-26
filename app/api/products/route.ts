@@ -10,6 +10,8 @@ interface Product {
   product_code: string
   product_name: string
   image: string
+  max_quantity?: number
+  type?: string
 }
 
 export async function GET() {
@@ -17,7 +19,7 @@ export async function GET() {
     await ensureProductsSchema()
 
     const result = await dbQuery<Product>(
-      "SELECT id, product_code, product_name, COALESCE(image, '') AS image FROM products ORDER BY product_code ASC"
+      "SELECT id, product_code, product_name, COALESCE(image, '') AS image, COALESCE(max_quantity, 0) AS max_quantity, COALESCE(type, '') AS type FROM products ORDER BY product_code ASC"
     )
 
     return NextResponse.json(result.rows)
@@ -32,7 +34,7 @@ export async function POST(request: NextRequest) {
   try {
     await ensureProductsSchema()
 
-    const { product_code, product_name, image = "" }: Product = await request.json()
+    const { product_code, product_name, image = "", max_quantity = 0, type = "" }: Product = await request.json()
 
     if (!product_code || !product_name) {
       return NextResponse.json(
@@ -42,10 +44,10 @@ export async function POST(request: NextRequest) {
     }
 
     const result = await dbQuery<Product>(
-      `INSERT INTO products (product_code, product_name, image)
-       VALUES ($1, $2, $3)
-       RETURNING id, product_code, product_name, COALESCE(image, '') AS image`,
-      [product_code, product_name, image]
+      `INSERT INTO products (product_code, product_name, image, max_quantity, type)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING id, product_code, product_name, COALESCE(image, '') AS image, COALESCE(max_quantity, 0) AS max_quantity, COALESCE(type, '') AS type`,
+      [product_code, product_name, image, max_quantity, type]
     )
 
     return NextResponse.json(result.rows[0], { status: 201 })
@@ -76,9 +78,9 @@ export async function PUT(request: NextRequest) {
           }
 
           await client.query(
-            `INSERT INTO products (product_code, product_name, image)
-             VALUES ($1, $2, $3)`,
-            [product.product_code, product.product_name, product.image ?? ""]
+            `INSERT INTO products (product_code, product_name, image, max_quantity, type)
+             VALUES ($1, $2, $3, $4, $5)`,
+            [product.product_code, product.product_name, product.image ?? "", product.max_quantity ?? 0, product.type ?? ""]
           )
         }
 
@@ -98,6 +100,8 @@ export async function PUT(request: NextRequest) {
       product_code,
       product_name,
       image = "",
+      max_quantity = 0,
+      type = "",
       previous_product_code,
     }: Product & { previous_product_code?: string } = payload
 
@@ -110,10 +114,10 @@ export async function PUT(request: NextRequest) {
 
     const result = await dbQuery<Product>(
       `UPDATE products
-       SET product_code = $1, product_name = $2, image = $3, updated_at = NOW()
-       WHERE id = $4
-       RETURNING id, product_code, product_name, COALESCE(image, '') AS image`,
-      [product_code, product_name, image, id]
+       SET product_code = $1, product_name = $2, image = $3, max_quantity = $4, type = $5, updated_at = NOW()
+       WHERE id = $6
+       RETURNING id, product_code, product_name, COALESCE(image, '') AS image, COALESCE(max_quantity, 0) AS max_quantity, COALESCE(type, '') AS type`,
+      [product_code, product_name, image, max_quantity, type, id]
     )
 
     if (result.rows.length === 0) {

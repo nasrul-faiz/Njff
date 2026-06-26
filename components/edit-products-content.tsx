@@ -5,13 +5,12 @@ import {
   PlusIcon,
   PencilIcon,
   Trash2Icon,
+  CheckIcon,
   XIcon,
   LinkIcon,
   UploadIcon,
 } from "lucide-react"
-import { getRefillData, upsertRefillItems, deleteRefillItemsByProduct } from "@/lib/refill-store"
-import { getProducts } from "@/lib/product-store"
-import type { RefillItem } from "@/components/refill-table"
+import { getProducts, type Product, type ProductType } from "@/lib/product-store"
 import {
   Table,
   TableBody,
@@ -22,20 +21,30 @@ import {
 } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
 import { ImageLightbox } from "@/components/image-lightbox"
-
-type Product = Pick<RefillItem, "productCode" | "productName" | "image">
+import { ConfirmDialog } from "@/components/confirm-dialog"
 
 const inputCls =
   "w-full rounded-md border bg-background px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
 
+const PRODUCT_TYPES: ProductType[] = ["RTE", "GM", "LLSD"]
+
+const emptyProduct = (): Product => ({
+  productCode: "",
+  productName: "",
+  image: "",
+  maxQuantity: 0,
+  type: "",
+})
+
 interface EditRowProps {
-  item: Product
   draft: Product
   onDraftChange: (product: Product) => void
+  onConfirm: () => void
   onCancel: () => void
+  confirmLoading?: boolean
 }
 
-function EditRow({ item, draft, onDraftChange, onCancel }: EditRowProps) {
+function EditRow({ draft, onDraftChange, onConfirm, onCancel, confirmLoading }: EditRowProps) {
   const [imageMode, setImageMode] = React.useState<"url" | "upload">("url")
   const fileRef = React.useRef<HTMLInputElement>(null)
 
@@ -66,12 +75,8 @@ function EditRow({ item, draft, onDraftChange, onCancel }: EditRowProps) {
           />
           <div className="flex items-center gap-1">
             {draft.image && (
-              <div className="relative h-7 w-7 rounded overflow-hidden border bg-muted shrink-0">
-                <img
-                  src={draft.image}
-                  alt=""
-                  className="h-full w-full object-cover"
-                />
+              <div className="h-7 w-7 rounded overflow-hidden border bg-muted shrink-0">
+                <img src={draft.image} alt="" className="h-full w-full object-cover" />
               </div>
             )}
             <div className="flex gap-1 flex-1">
@@ -88,10 +93,7 @@ function EditRow({ item, draft, onDraftChange, onCancel }: EditRowProps) {
               </button>
               <button
                 type="button"
-                onClick={() => {
-                  setImageMode("upload")
-                  fileRef.current?.click()
-                }}
+                onClick={() => { setImageMode("upload"); fileRef.current?.click() }}
                 className={`flex items-center gap-1 rounded px-1.5 py-1 text-[10px] border transition-colors ${
                   imageMode === "upload"
                     ? "bg-foreground text-background border-foreground"
@@ -100,13 +102,7 @@ function EditRow({ item, draft, onDraftChange, onCancel }: EditRowProps) {
               >
                 <UploadIcon className="size-3" /> Upload
               </button>
-              <input
-                ref={fileRef}
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={handleFile}
-              />
+              <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleFile} />
             </div>
           </div>
           {imageMode === "url" && (
@@ -119,11 +115,40 @@ function EditRow({ item, draft, onDraftChange, onCancel }: EditRowProps) {
           )}
         </div>
       </TableCell>
+      <TableCell className="py-1.5 text-center">
+        <select
+          className={inputCls + " text-center"}
+          value={draft.type ?? ""}
+          onChange={(e) => onDraftChange({ ...draft, type: e.target.value as ProductType | "" })}
+        >
+          <option value="">—</option>
+          {PRODUCT_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+        </select>
+      </TableCell>
+      <TableCell className="py-1.5 text-center">
+        <input
+          type="number"
+          min={0}
+          className={inputCls + " text-center"}
+          value={draft.maxQuantity === 0 ? "" : draft.maxQuantity}
+          onChange={(e) => onDraftChange({ ...draft, maxQuantity: Math.max(0, parseInt(e.target.value) || 0) })}
+          placeholder="0"
+        />
+      </TableCell>
       <TableCell className="py-1.5">
         <div className="flex justify-center gap-1">
           <button
+            onClick={onConfirm}
+            disabled={confirmLoading}
+            className="rounded p-1 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 text-muted-foreground hover:text-emerald-600 disabled:opacity-40"
+            title="Confirm"
+          >
+            <CheckIcon className="size-3.5" />
+          </button>
+          <button
             onClick={onCancel}
-            className="rounded p-1 hover:bg-muted text-muted-foreground"
+            className="rounded p-1 hover:bg-muted text-muted-foreground hover:text-foreground"
+            title="Cancel"
           >
             <XIcon className="size-3.5" />
           </button>
@@ -135,271 +160,274 @@ function EditRow({ item, draft, onDraftChange, onCancel }: EditRowProps) {
 
 interface EditProductsContentProps {
   onSaveRef?: React.MutableRefObject<(() => Promise<void>) | null>
+  onDirtyChange?: (dirty: boolean) => void
 }
 
-export function EditProductsContent({ onSaveRef }: EditProductsContentProps) {
+export function EditProductsContent({ onSaveRef, onDirtyChange }: EditProductsContentProps) {
   const [products, setProducts] = React.useState<Product[]>([])
-  const [allItems, setAllItems] = React.useState<Array<RefillItem & { machine_id: string }>>([])
+  // drafts: confirmed edits pending Save, keyed by productCode
   const [drafts, setDrafts] = React.useState<Record<string, Product>>({})
-  const [loading, setLoading] = React.useState(true)
   const [editingCode, setEditingCode] = React.useState<string | null>(null)
   const [adding, setAdding] = React.useState(false)
-  const [newProduct, setNewProduct] = React.useState<Product>({
-    productCode: "",
-    productName: "",
-    image: "",
-  })
+  const [addDraft, setAddDraft] = React.useState<Product>(emptyProduct())
+  const [addLoading, setAddLoading] = React.useState(false)
+  const [deleteTarget, setDeleteTarget] = React.useState<Product | null>(null)
+  const [loading, setLoading] = React.useState(true)
 
   React.useEffect(() => {
-    Promise.all([getRefillData(), getProducts()]).then(([data, prods]) => {
-      const flat: Array<RefillItem & { machine_id: string }> = []
-      for (const [machineId, items] of Object.entries(data)) {
-        for (const item of items) {
-          flat.push({ ...item, machine_id: machineId })
-        }
-      }
-      setAllItems(flat)
-      setProducts(prods.map((p) => ({ productCode: p.productCode, productName: p.productName, image: p.image })))
-      setLoading(false)
-    })
+    onDirtyChange?.(Object.keys(drafts).length > 0)
+  }, [drafts, onDirtyChange])
+
+  React.useEffect(() => {
+    getProducts().then((prods) => { setProducts(prods); setLoading(false) })
   }, [])
 
   const handleSaveAll = React.useCallback(async () => {
-    const itemsToUpdate: Array<RefillItem & { machine_id: string }> = []
-    const newProductsToAdd: Product[] = []
-
     for (const [code, draft] of Object.entries(drafts)) {
+      const existing = products.find((p) => p.productCode === code)
+      if (!existing?.id) continue
       const finalCode = draft.productCode.trim().toUpperCase()
       if (!finalCode || !draft.productName.trim()) continue
 
-      if (code === "new") {
-        // New product — add to the products master via API
-        newProductsToAdd.push({
-          productCode: finalCode,
-          productName: draft.productName.trim(),
+      const res = await fetch("/api/products", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: existing.id,
+          product_code: finalCode,
+          product_name: draft.productName.trim(),
           image: draft.image.trim(),
-        })
-        continue
-      }
-
-      // Existing product edit — update all refill items that use this product code
-      const affected = allItems.filter((i) => i.productCode === code)
-      if (affected.length > 0) {
-        const updated = affected.map((i) => ({
-          ...i,
-          productCode: finalCode,
-          productName: draft.productName.trim(),
-          image: draft.image.trim(),
-        }))
-        itemsToUpdate.push(...updated)
-      }
-    }
-
-    if (itemsToUpdate.length > 0) {
-      await upsertRefillItems(itemsToUpdate)
-      // Merge updates back into allItems, preserving items that weren't edited
-      setAllItems((prev) => {
-        const updatedKeys = new Set(itemsToUpdate.map((i) => `${i.machine_id}::${i.slot}`))
-        const unchanged = prev.filter((i) => !updatedKeys.has(`${i.machine_id}::${i.slot}`))
-        return [...unchanged, ...itemsToUpdate]
+          max_quantity: draft.maxQuantity ?? 0,
+          type: draft.type ?? "",
+          previous_product_code: code,
+        }),
       })
-    }
-
-    if (newProductsToAdd.length > 0) {
-      for (const p of newProductsToAdd) {
-        await fetch("/api/products", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            product_code: p.productCode,
-            product_name: p.productName,
-            image: p.image,
-          }),
-        })
+      if (res.ok) {
+        setProducts((prev) =>
+          prev.map((p) =>
+            p.productCode === code
+              ? { ...p, productCode: finalCode, productName: draft.productName.trim(), image: draft.image.trim(), maxQuantity: draft.maxQuantity ?? 0, type: draft.type ?? "" }
+              : p
+          )
+        )
       }
-      setProducts((prev) => {
-        const existing = new Set(prev.map((p) => p.productCode))
-        return [...prev, ...newProductsToAdd.filter((p) => !existing.has(p.productCode))]
-      })
     }
-
-    // Reflect product edits in the products list
-    if (itemsToUpdate.length > 0) {
-      setProducts((prev) => {
-        const updated = new Map(prev.map((p) => [p.productCode, p]))
-        for (const [code, draft] of Object.entries(drafts)) {
-          if (code === "new") continue
-          const finalCode = draft.productCode.trim().toUpperCase()
-          if (!finalCode) continue
-          updated.delete(code)
-          updated.set(finalCode, {
-            productCode: finalCode,
-            productName: draft.productName.trim(),
-            image: draft.image.trim(),
-          })
-        }
-        return Array.from(updated.values())
-      })
-    }
-
     setDrafts({})
-    setAdding(false)
     setEditingCode(null)
-  }, [drafts, allItems])
+  }, [drafts, products])
 
   React.useEffect(() => {
-    if (onSaveRef) {
-      onSaveRef.current = handleSaveAll
-    }
+    if (onSaveRef) onSaveRef.current = handleSaveAll
   }, [handleSaveAll, onSaveRef])
-
-  async function handleDelete(productCode: string) {
-    await deleteRefillItemsByProduct(productCode)
-    setProducts((prev) => prev.filter((p) => p.productCode !== productCode))
-    setAllItems((prev) => prev.filter((i) => i.productCode !== productCode))
-  }
 
   function startAdd() {
     setAdding(true)
     setEditingCode(null)
-    setDrafts({ new: { productCode: "", productName: "", image: "" } })
+    setAddDraft(emptyProduct())
+  }
+
+  async function confirmNew() {
+    const finalCode = addDraft.productCode.trim().toUpperCase()
+    if (!finalCode || !addDraft.productName.trim()) return
+    setAddLoading(true)
+    const res = await fetch("/api/products", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        product_code: finalCode,
+        product_name: addDraft.productName.trim(),
+        image: addDraft.image.trim(),
+        max_quantity: addDraft.maxQuantity ?? 0,
+        type: addDraft.type ?? "",
+      }),
+    })
+    setAddLoading(false)
+    if (res.ok) {
+      const created = await res.json()
+      setProducts((prev) => {
+        const exists = prev.some((p) => p.productCode === finalCode)
+        if (exists) return prev
+        return [...prev, {
+          id: created.id,
+          productCode: created.product_code,
+          productName: created.product_name,
+          image: created.image ?? "",
+          maxQuantity: created.max_quantity ?? 0,
+          type: created.type ?? "",
+        }]
+      })
+      setAdding(false)
+      setAddDraft(emptyProduct())
+    }
+  }
+
+  function cancelNew() {
+    setAdding(false)
+    setAddDraft(emptyProduct())
   }
 
   function startEdit(code: string) {
     const product = products.find((p) => p.productCode === code)
-    if (product) {
-      setEditingCode(code)
-      setDrafts({ [code]: { ...product } })
-    }
-  }
-
-  function cancelEdit() {
-    setEditingCode(null)
+    if (!product) return
+    setEditingCode(code)
     setAdding(false)
-    setDrafts({})
+    setDrafts((prev) => ({ ...prev, [code]: prev[code] ?? { ...product } }))
   }
 
-  function updateDraft(code: string, product: Product) {
-    setDrafts((prev) => ({ ...prev, [code]: product }))
+  function confirmEdit(code: string) {
+    setEditingCode(null)
+  }
+
+  function cancelEdit(code: string) {
+    setDrafts((prev) => { const { [code]: _, ...rest } = prev; return rest })
+    setEditingCode(null)
+  }
+
+  async function confirmDelete() {
+    if (!deleteTarget?.id) return
+    const res = await fetch(`/api/products?id=${deleteTarget.id}`, { method: "DELETE" })
+    if (res.ok) {
+      setProducts((prev) => prev.filter((p) => p.id !== deleteTarget.id))
+      if (deleteTarget.productCode) {
+        setDrafts((prev) => { const { [deleteTarget.productCode]: _, ...rest } = prev; return rest })
+      }
+    }
+    setDeleteTarget(null)
   }
 
   if (loading) {
-    return (
-      <div className="py-10 text-center text-sm text-muted-foreground">
-        Loading…
-      </div>
-    )
+    return <div className="py-10 text-center text-sm text-muted-foreground">Loading…</div>
   }
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-sm text-muted-foreground">
-          {products.length} product{products.length !== 1 && "s"} in master list
-        </p>
-        <Button
-          size="sm"
-          className="gap-1.5"
-          onClick={startAdd}
-          disabled={editingCode !== null || adding}
-        >
-          <PlusIcon className="size-3.5" />
-          Add Product
-        </Button>
-      </div>
+    <>
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        title="Delete product?"
+        description={`"${deleteTarget?.productName}" (${deleteTarget?.productCode}) will be permanently removed.`}
+        confirmText="Delete"
+        onConfirm={confirmDelete}
+        onCancel={() => setDeleteTarget(null)}
+      />
 
-      <div className="rounded-xl border bg-card overflow-hidden text-xs">
-        <Table className="text-xs">
-          <TableHeader>
-            <TableRow className="hover:bg-transparent">
-              {["Code", "Product Name / Image", "Actions"].map((h) => (
-                <TableHead
-                  key={h}
-                  className="text-center text-[11px] font-semibold tracking-wide py-2"
-                >
-                  {h}
-                </TableHead>
-              ))}
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {adding && drafts.new && (
-              <EditRow
-                item={drafts.new}
-                draft={drafts.new}
-                onDraftChange={(p) => updateDraft("new", p)}
-                onCancel={cancelEdit}
-              />
-            )}
-            {products.map((item) => {
-              if (editingCode === item.productCode && drafts[item.productCode]) {
+      <div className="flex flex-col gap-4">
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-sm text-muted-foreground">
+            {products.length} product{products.length !== 1 && "s"} in master list
+          </p>
+          <Button
+            size="sm"
+            className="gap-1.5"
+            onClick={startAdd}
+            disabled={editingCode !== null || adding}
+          >
+            <PlusIcon className="size-3.5" />
+            Add Product
+          </Button>
+        </div>
+
+        <div className="rounded-xl border bg-card overflow-hidden text-xs">
+          <Table className="text-xs">
+            <TableHeader>
+              <TableRow className="hover:bg-transparent">
+                {["Code", "Product Name / Image", "Type", "Max Qty", "Actions"].map((h) => (
+                  <TableHead key={h} className="text-center text-[11px] font-semibold tracking-wide py-2">
+                    {h}
+                  </TableHead>
+                ))}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {adding && (
+                <EditRow
+                  draft={addDraft}
+                  onDraftChange={setAddDraft}
+                  onConfirm={confirmNew}
+                  onCancel={cancelNew}
+                  confirmLoading={addLoading}
+                />
+              )}
+              {products.map((item) => {
+                const hasDraft = drafts[item.productCode] !== undefined
+                const isEditing = editingCode === item.productCode
+
+                if (isEditing && drafts[item.productCode]) {
+                  return (
+                    <EditRow
+                      key={item.productCode}
+                      draft={drafts[item.productCode]}
+                      onDraftChange={(p) => setDrafts((prev) => ({ ...prev, [item.productCode]: p }))}
+                      onConfirm={() => confirmEdit(item.productCode)}
+                      onCancel={() => cancelEdit(item.productCode)}
+                    />
+                  )
+                }
+
+                const display = hasDraft ? drafts[item.productCode] : item
+
                 return (
-                  <EditRow
+                  <TableRow
                     key={item.productCode}
-                    item={item}
-                    draft={drafts[item.productCode]}
-                    onDraftChange={(p) => updateDraft(item.productCode, p)}
-                    onCancel={cancelEdit}
-                  />
+                    className={`h-10 ${hasDraft ? "border-l-2 border-l-amber-400 bg-amber-50/20 dark:bg-amber-950/10" : ""}`}
+                  >
+                    <TableCell className="text-center py-1.5 text-muted-foreground font-mono">
+                      <div className="flex items-center justify-center gap-1">
+                        {display.productCode}
+                        {hasDraft && <span className="inline-block size-1.5 rounded-full bg-amber-400 shrink-0" />}
+                      </div>
+                    </TableCell>
+                    <TableCell className="py-1.5">
+                      <div className="flex items-center gap-2">
+                        {display.image ? (
+                          <ImageLightbox src={display.image} alt={display.productName}>
+                            <div className="h-7 w-7 rounded-md overflow-hidden border bg-muted shrink-0">
+                              <img src={display.image} alt={display.productName} className="h-full w-full object-cover" />
+                            </div>
+                          </ImageLightbox>
+                        ) : (
+                          <div className="h-7 w-7 rounded-md border bg-muted shrink-0" />
+                        )}
+                        <span className="font-medium truncate max-w-[200px]">{display.productName}</span>
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-center py-1.5 text-muted-foreground">
+                      {display.type || <span className="text-muted-foreground/40">—</span>}
+                    </TableCell>
+                    <TableCell className="text-center py-1.5 tabular-nums text-muted-foreground">
+                      {(display.maxQuantity ?? 0) > 0 ? display.maxQuantity : <span className="text-muted-foreground/40">—</span>}
+                    </TableCell>
+                    <TableCell className="py-1.5">
+                      <div className="flex justify-center gap-1">
+                        <button
+                          onClick={() => startEdit(item.productCode)}
+                          disabled={adding || (editingCode !== null && editingCode !== item.productCode)}
+                          className="rounded p-1 hover:bg-muted text-muted-foreground hover:text-foreground disabled:opacity-30"
+                        >
+                          <PencilIcon className="size-3.5" />
+                        </button>
+                        <button
+                          onClick={() => setDeleteTarget(item)}
+                          disabled={adding || editingCode !== null}
+                          className="rounded p-1 hover:bg-red-100 dark:hover:bg-red-900/40 text-muted-foreground hover:text-red-500 disabled:opacity-30"
+                        >
+                          <Trash2Icon className="size-3.5" />
+                        </button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
                 )
-              }
-              return (
-                <TableRow key={item.productCode} className="h-10">
-                  <TableCell className="text-center py-1.5 text-muted-foreground font-mono">
-                    {item.productCode}
-                  </TableCell>
-                  <TableCell className="py-1.5">
-                    <div className="flex items-center gap-2">
-                      {item.image ? (
-                        <ImageLightbox src={item.image} alt={item.productName}>
-                          <div className="h-7 w-7 rounded-md overflow-hidden border bg-muted shrink-0">
-                            <img
-                              src={item.image}
-                              alt={item.productName}
-                              className="h-full w-full object-cover"
-                            />
-                          </div>
-                        </ImageLightbox>
-                      ) : (
-                        <div className="h-7 w-7 rounded-md border bg-muted shrink-0" />
-                      )}
-                      <span className="font-medium truncate max-w-[200px]">
-                        {item.productName}
-                      </span>
-                    </div>
-                  </TableCell>
-                  <TableCell className="py-1.5">
-                    <div className="flex justify-center gap-1">
-                      <button
-                        onClick={() => startEdit(item.productCode)}
-                        className="rounded p-1 hover:bg-muted text-muted-foreground hover:text-foreground"
-                      >
-                        <PencilIcon className="size-3.5" />
-                      </button>
-                      <button
-                        onClick={() => handleDelete(item.productCode)}
-                        className="rounded p-1 hover:bg-red-100 dark:hover:bg-red-900/40 text-muted-foreground hover:text-red-500"
-                      >
-                        <Trash2Icon className="size-3.5" />
-                      </button>
-                    </div>
+              })}
+              {products.length === 0 && !adding && (
+                <TableRow>
+                  <TableCell colSpan={5} className="py-10 text-center text-muted-foreground">
+                    No products yet.
                   </TableCell>
                 </TableRow>
-              )
-            })}
-            {products.length === 0 && !adding && (
-              <TableRow>
-                <TableCell
-                  colSpan={3}
-                  className="py-10 text-center text-muted-foreground"
-                >
-                  No products yet.
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
+              )}
+            </TableBody>
+          </Table>
+        </div>
       </div>
-    </div>
+    </>
   )
 }

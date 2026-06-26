@@ -8,6 +8,7 @@ interface DOItem {
   slot: string
   productCode: string
   productName: string
+  image?: string
   qty: number
 }
 
@@ -21,16 +22,22 @@ interface DeliveryOrder {
   items?: DOItem[]
 }
 
+async function ensureImageColumn() {
+  await dbQuery(`
+    ALTER TABLE delivery_order_items
+    ADD COLUMN IF NOT EXISTS image VARCHAR(500)
+  `)
+}
+
 export async function GET(request: NextRequest) {
   try {
+    await ensureImageColumn()
+
     const { searchParams } = new URL(request.url)
     const code = searchParams.get("code")
 
     if (code) {
-      // Get specific delivery order with items
-      const doResult = await dbQuery<
-        DeliveryOrder & { id: number }
-      >(
+      const doResult = await dbQuery<DeliveryOrder & { id: number }>(
         "SELECT id, code, machine_id, machine_label, date, status FROM delivery_orders WHERE code = $1",
         [code.toUpperCase()]
       )
@@ -45,7 +52,14 @@ export async function GET(request: NextRequest) {
       const order = doResult.rows[0]
 
       const itemsResult = await dbQuery<DOItem>(
-        "SELECT slot, product_code as productCode, product_name as productName, qty FROM delivery_order_items WHERE delivery_order_id = $1",
+        `SELECT slot,
+                product_code AS "productCode",
+                product_name AS "productName",
+                COALESCE(image, '') AS image,
+                qty
+         FROM delivery_order_items
+         WHERE delivery_order_id = $1
+         ORDER BY slot`,
         [order.id]
       )
 
@@ -66,6 +80,7 @@ export async function GET(request: NextRequest) {
               'slot', i.slot,
               'productCode', i.product_code,
               'productName', i.product_name,
+              'image', COALESCE(i.image, ''),
               'qty', i.qty
             )
             ORDER BY i.slot
@@ -89,6 +104,8 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  await ensureImageColumn()
+
   const pool = getDbPool()
   const client = await pool.connect()
   try {
@@ -96,10 +113,7 @@ export async function POST(request: NextRequest) {
 
     if (!code || !machine_id || !machine_label || !date || !items) {
       return NextResponse.json(
-        {
-          error:
-            "code, machine_id, machine_label, date, and items are required",
-        },
+        { error: "code, machine_id, machine_label, date, and items are required" },
         { status: 400 }
       )
     }
@@ -115,13 +129,22 @@ export async function POST(request: NextRequest) {
 
     for (const item of items) {
       await client.query(
-        "INSERT INTO delivery_order_items (delivery_order_id, slot, product_code, product_name, qty) VALUES ($1, $2, $3, $4, $5)",
-        [orderId, item.slot, item.productCode, item.productName, item.qty]
+        `INSERT INTO delivery_order_items
+           (delivery_order_id, slot, product_code, product_name, image, qty)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [orderId, item.slot, item.productCode, item.productName, item.image ?? "", item.qty]
       )
     }
 
     const itemsResult = await client.query<DOItem>(
-      "SELECT slot, product_code as \"productCode\", product_name as \"productName\", qty FROM delivery_order_items WHERE delivery_order_id = $1",
+      `SELECT slot,
+              product_code AS "productCode",
+              product_name AS "productName",
+              COALESCE(image, '') AS image,
+              qty
+       FROM delivery_order_items
+       WHERE delivery_order_id = $1
+       ORDER BY slot`,
       [orderId]
     )
 
@@ -134,9 +157,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     await client.query("ROLLBACK")
     const message =
-      error instanceof Error
-        ? error.message
-        : "Failed to create delivery order"
+      error instanceof Error ? error.message : "Failed to create delivery order"
     return NextResponse.json({ error: message }, { status: 500 })
   } finally {
     client.release()

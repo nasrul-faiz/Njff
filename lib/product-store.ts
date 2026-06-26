@@ -1,8 +1,12 @@
+export type ProductType = "RTE" | "GM" | "LLSD"
+
 export interface Product {
   id?: number
   productCode: string
   productName: string
   image: string
+  maxQuantity: number
+  type?: ProductType | ""
 }
 
 function toApiProduct(product: Product) {
@@ -11,6 +15,8 @@ function toApiProduct(product: Product) {
     product_code: product.productCode,
     product_name: product.productName,
     image: product.image,
+    max_quantity: product.maxQuantity ?? 0,
+    type: product.type ?? "",
   }
 }
 
@@ -19,12 +25,16 @@ function fromApiProduct(product: {
   product_code: string
   product_name: string
   image?: string | null
+  max_quantity?: number | null
+  type?: string | null
 }): Product {
   return {
     id: product.id,
     productCode: product.product_code,
     productName: product.product_name,
     image: product.image ?? "",
+    maxQuantity: product.max_quantity ?? 0,
+    type: (product.type as ProductType) ?? "",
   }
 }
 

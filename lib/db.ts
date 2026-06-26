@@ -1,13 +1,13 @@
 import { Pool, type QueryResult, type QueryResultRow } from "pg"
 
 function getConnectionString(): string {
-  const connectionString = process.env.DATABASE_URL
+  const connectionString = process.env.NEON_DATABASE_URL ?? process.env.DATABASE_URL
   if (!connectionString) {
     console.error(
-      "❌ DATABASE_URL is not set. Please follow NEON_SETUP.md to configure your database."
+      "❌ NEON_DATABASE_URL is not set. Please follow NEON_SETUP.md to configure your database."
     )
     throw new Error(
-      "DATABASE_URL environment variable is required. See NEON_SETUP.md for setup instructions."
+      "NEON_DATABASE_URL environment variable is required. See NEON_SETUP.md for setup instructions."
     )
   }
   return connectionString

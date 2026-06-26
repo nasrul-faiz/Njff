@@ -170,9 +170,11 @@ export function HomeContent() {
         </div>
         <div>
           <p className="font-semibold text-lg">Refill Completed</p>
-          <p className="text-sm text-muted-foreground mt-1">
-            DO <span className="font-mono font-semibold">{activeDO?.code}</span> marked as done.
-          </p>
+          {activeDO && (
+            <p className="text-sm text-muted-foreground mt-1">
+              DO <span className="font-mono font-semibold">{activeDO.code}</span> marked as done.
+            </p>
+          )}
         </div>
         <Button size="sm" onClick={handleCancelRefill}>
           Back to Home

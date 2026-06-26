@@ -29,6 +29,13 @@ interface FieldSelectProps {
   machines?: Machine[]
 }
 
+function formatMachineLabel(machine: Machine): string {
+  const locationOnly = machine.label
+    .replace(new RegExp(`^${machine.value}\\s*[—-]\\s*`), "")
+    .trim()
+  return `${machine.value} — ${locationOnly}`
+}
+
 export function FieldSelect({ value, onChange, machines: machinesProp }: FieldSelectProps) {
   const [open, setOpen] = React.useState(false)
   const [machines, setMachines] = React.useState<Machine[]>(machinesProp ?? [])
@@ -54,7 +61,7 @@ export function FieldSelect({ value, onChange, machines: machinesProp }: FieldSe
               aria-expanded={open}
               className="h-8 w-full justify-between rounded-lg px-2.5 font-normal"
             >
-              {selected?.label ?? "Choose machines"}
+              {selected ? formatMachineLabel(selected) : "Choose machines"}
               <ChevronsUpDownIcon className="ml-2 size-4 shrink-0 opacity-50" />
             </Button>
           </PopoverTrigger>
@@ -72,13 +79,13 @@ export function FieldSelect({ value, onChange, machines: machinesProp }: FieldSe
                   {machines.map((machine) => (
                     <CommandItem
                       key={machine.value}
-                      value={machine.label}
+                      value={`${machine.value} ${machine.label}`}
                       onSelect={() => {
                         onChange(machine.value)
                         setOpen(false)
                       }}
                     >
-                      {machine.label}
+                      {formatMachineLabel(machine)}
                     </CommandItem>
                   ))}
                 </CommandGroup>

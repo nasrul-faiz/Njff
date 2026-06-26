@@ -38,6 +38,16 @@ async function ensureProductsSchemaInternal() {
     ALTER TABLE refill_items
     ADD COLUMN IF NOT EXISTS image VARCHAR(500)
   `)
+
+  await dbQuery(`
+    ALTER TABLE products
+    ADD COLUMN IF NOT EXISTS max_quantity INTEGER DEFAULT 0
+  `)
+
+  await dbQuery(`
+    ALTER TABLE products
+    ADD COLUMN IF NOT EXISTS type VARCHAR(10)
+  `)
 }
 
 export async function ensureProductsSchema() {

@@ -41,7 +41,7 @@ export function EditPageToolbar({ title, onSave, isDirty = false }: EditPageTool
         >
           <ArrowLeftIcon className="size-5" />
         </button>
-        <h1 className="text-lg font-semibold">{title}</h1>
+        <h1 className="text-sm font-semibold">{title}</h1>
       </div>
 
       <div className="flex items-center gap-2">
@@ -60,8 +60,12 @@ export function EditPageToolbar({ title, onSave, isDirty = false }: EditPageTool
         <Button
           size="sm"
           onClick={handleSave}
-          disabled={isSaving}
-          className="gap-1.5"
+          disabled={isSaving || !isDirty}
+          className={`gap-1.5 transition-colors ${
+            isDirty && !isSaving
+              ? "bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-600"
+              : ""
+          }`}
         >
           <SaveIcon className="size-4" />
           {isSaving ? "Saving..." : "Save"}

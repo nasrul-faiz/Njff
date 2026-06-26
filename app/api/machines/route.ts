@@ -8,12 +8,21 @@ interface Machine {
   id?: number
   value: string
   label: string
+  route?: string
+}
+
+async function ensureMachinesRoute() {
+  await dbQuery(`
+    ALTER TABLE machines
+    ADD COLUMN IF NOT EXISTS route VARCHAR(255)
+  `)
 }
 
 export async function GET() {
   try {
+    await ensureMachinesRoute()
     const result = await dbQuery<Machine>(
-      "SELECT id, value, label FROM machines ORDER BY created_at ASC"
+      "SELECT id, value, label, COALESCE(route, '') AS route FROM machines ORDER BY created_at ASC"
     )
     return NextResponse.json(result.rows)
   } catch (error) {
@@ -26,7 +35,8 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
-    const { value, label }: Machine = await request.json()
+    await ensureMachinesRoute()
+    const { value, label, route = "" }: Machine = await request.json()
 
     if (!value || !label) {
       return NextResponse.json(
@@ -36,8 +46,8 @@ export async function POST(request: NextRequest) {
     }
 
     const result = await dbQuery<Machine>(
-      "INSERT INTO machines (value, label) VALUES ($1, $2) RETURNING id, value, label",
-      [value, label]
+      "INSERT INTO machines (value, label, route) VALUES ($1, $2, $3) RETURNING id, value, label, COALESCE(route, '') AS route",
+      [value, label, route]
     )
 
     return NextResponse.json(result.rows[0], { status: 201 })
@@ -50,7 +60,8 @@ export async function POST(request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   try {
-    const { id, value, label }: Machine = await request.json()
+    await ensureMachinesRoute()
+    const { id, value, label, route = "" }: Machine = await request.json()
 
     if (!id || !value || !label) {
       return NextResponse.json(
@@ -59,7 +70,6 @@ export async function PUT(request: NextRequest) {
       )
     }
 
-    // Fetch old value to cascade machine_id in refill_items
     const existing = await dbQuery<Machine>(
       "SELECT value FROM machines WHERE id = $1",
       [id]
@@ -67,15 +77,14 @@ export async function PUT(request: NextRequest) {
     const oldValue = existing.rows[0]?.value
 
     const result = await dbQuery<Machine>(
-      "UPDATE machines SET value = $1, label = $2, updated_at = NOW() WHERE id = $3 RETURNING id, value, label",
-      [value, label, id]
+      "UPDATE machines SET value = $1, label = $2, route = $3, updated_at = NOW() WHERE id = $4 RETURNING id, value, label, COALESCE(route, '') AS route",
+      [value, label, route, id]
     )
 
     if (result.rows.length === 0) {
       return NextResponse.json({ error: "Machine not found" }, { status: 404 })
     }
 
-    // Cascade machine_id change to refill_items
     if (oldValue && oldValue !== value) {
       await dbQuery(
         "UPDATE refill_items SET machine_id = $1 WHERE machine_id = $2",

@@ -7,16 +7,21 @@ import { EditPageToolbar } from "@/components/edit-page-toolbar"
 
 export default function EditMachineProductsPage() {
   const saveRef = React.useRef<(() => Promise<void>) | null>(null)
+  const [isDirty, setIsDirty] = React.useState(false)
 
   return (
     <AppLayout title="Manage Machine Products">
       <div className="flex flex-col h-screen">
         <EditPageToolbar
           title="Manage Machine Products"
-          onSave={() => saveRef.current?.() ?? Promise.resolve()}
+          onSave={async () => {
+            await (saveRef.current?.() ?? Promise.resolve())
+            setIsDirty(false)
+          }}
+          isDirty={isDirty}
         />
         <div className="flex-1 overflow-auto p-4">
-          <EditMachineProductsContent onSaveRef={saveRef} />
+          <EditMachineProductsContent onSaveRef={saveRef} onDirtyChange={setIsDirty} />
         </div>
       </div>
     </AppLayout>

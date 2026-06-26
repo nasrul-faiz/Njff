@@ -2,6 +2,7 @@ export interface Machine {
   id?: number
   value: string
   label: string
+  route?: string
 }
 
 export async function getMachines(): Promise<Machine[]> {
