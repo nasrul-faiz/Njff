@@ -113,12 +113,24 @@ export function EditMachinesContent({ onSaveRef, onDirtyChange }: EditMachinesCo
   }, [])
 
   const handleSaveAll = React.useCallback(async () => {
+    let hadError = false
+    const remainingDrafts: Record<string, Machine> = { ...drafts }
+
     for (const [key, draft] of Object.entries(drafts)) {
       const value = draft.value.trim().toUpperCase()
-      if (!value) continue
+      if (!value) {
+        hadError = true
+        continue
+      }
       const machineId = parseInt(key)
-      if (isNaN(machineId)) continue
-      if (machines.some((m) => m.value === value && m.id !== machineId)) continue
+      if (isNaN(machineId)) {
+        hadError = true
+        continue
+      }
+      if (machines.some((m) => m.value === value && m.id !== machineId)) {
+        hadError = true
+        continue
+      }
       const updated = await updateMachine({
         ...draft,
         id: machineId,
@@ -128,10 +140,18 @@ export function EditMachinesContent({ onSaveRef, onDirtyChange }: EditMachinesCo
       })
       if (updated) {
         setMachines((prev) => prev.map((m) => m.id === machineId ? updated : m))
+        delete remainingDrafts[key]
+      } else {
+        hadError = true
       }
     }
-    setDrafts({})
+
+    setDrafts(remainingDrafts)
     setEditingKey(null)
+
+    if (hadError) {
+      throw new Error("Some machine changes could not be saved.")
+    }
   }, [drafts, machines])
 
   React.useEffect(() => {

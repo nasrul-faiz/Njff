@@ -195,13 +195,22 @@ export function EditMachineProductsContent({ onSaveRef, onDirtyChange }: EditMac
 
   const handleSaveAll = React.useCallback(async () => {
     const itemsToSave: Array<RefillItem & { machine_id: string }> = []
+    const keysToSave: string[] = []
+    const remainingDrafts: Record<string, Placement> = { ...drafts }
+    let hadError = false
 
     for (const [key, draft] of Object.entries(drafts)) {
       const slot = draft.slot.trim().toUpperCase()
       const code = draft.productCode.trim().toUpperCase()
-      if (!draft.machineId || !slot || !code) continue
+      if (!draft.machineId || !slot || !code) {
+        hadError = true
+        continue
+      }
       const product = productMap.get(code)
-      if (!product) continue
+      if (!product) {
+        hadError = true
+        continue
+      }
       itemsToSave.push({
         machine_id: draft.machineId, slot, productCode: code,
         productName: product.productName, image: product.image,
@@ -209,31 +218,46 @@ export function EditMachineProductsContent({ onSaveRef, onDirtyChange }: EditMac
         stockIn: draft.stockIn, overflow: draft.overflow,
         stockOut: draft.stockOut, currentInventory: draft.currentInventory,
       })
+      keysToSave.push(key)
     }
 
     if (itemsToSave.length > 0) {
-      await upsertRefillItems(itemsToSave)
-    }
-
-    const [data, prods] = await Promise.all([getRefillData(), getProducts()])
-    const flat: Placement[] = []
-    for (const [machineId, items] of Object.entries(data)) {
-      for (const item of items) {
-        flat.push({
-          machineId, slot: item.slot, productCode: item.productCode,
-          maxCapacity: item.maxCapacity, stockIn: item.stockIn,
-          overflow: item.overflow, stockOut: item.stockOut,
-          currentInventory: item.currentInventory,
-        })
+      const saved = await upsertRefillItems(itemsToSave)
+      if (saved) {
+        for (const key of keysToSave) {
+          delete remainingDrafts[key]
+        }
+      } else {
+        hadError = true
       }
     }
-    setPlacements(flat)
-    setProducts(prods.map((p) => ({
-      productCode: p.productCode, productName: p.productName,
-      image: p.image, maxQuantity: p.maxQuantity ?? 0,
-    })))
-    setDrafts({})
+
+    if (keysToSave.length > 0) {
+      const [data, prods] = await Promise.all([getRefillData(), getProducts()])
+      const flat: Placement[] = []
+      for (const [machineId, items] of Object.entries(data)) {
+        for (const item of items) {
+          flat.push({
+            machineId, slot: item.slot, productCode: item.productCode,
+            maxCapacity: item.maxCapacity, stockIn: item.stockIn,
+            overflow: item.overflow, stockOut: item.stockOut,
+            currentInventory: item.currentInventory,
+          })
+        }
+      }
+      setPlacements(flat)
+      setProducts(prods.map((p) => ({
+        productCode: p.productCode, productName: p.productName,
+        image: p.image, maxQuantity: p.maxQuantity ?? 0,
+      })))
+    }
+
+    setDrafts(remainingDrafts)
     setEditingKey(null)
+
+    if (hadError) {
+      throw new Error("Some machine product changes could not be saved.")
+    }
   }, [drafts, productMap])
 
   React.useEffect(() => {
@@ -256,12 +280,18 @@ export function EditMachineProductsContent({ onSaveRef, onDirtyChange }: EditMac
     const product = productMap.get(code)
     if (!product) return
     setAddLoading(true)
-    await upsertRefillItems([{
+    const saved = await upsertRefillItems([{
       machine_id: addDraft.machineId, slot, productCode: code,
       productName: product.productName, image: product.image,
       maxCapacity: Math.max(0, addDraft.maxCapacity),
       stockIn: 0, overflow: 0, stockOut: 0, currentInventory: 0,
     }])
+
+    if (!saved) {
+      setAddLoading(false)
+      return
+    }
+
     const data = await getRefillData()
     const flat: Placement[] = []
     for (const [machineId, items] of Object.entries(data)) {

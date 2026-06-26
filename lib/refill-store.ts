@@ -52,7 +52,7 @@ export async function saveRefillData(data: RefillDataMap): Promise<void> {
 
 export async function upsertRefillItems(
   items: Array<RefillItem & { machine_id: string }>
-): Promise<void> {
+): Promise<boolean> {
   try {
     const response = await fetch("/api/refill", {
       method: "POST",
@@ -60,8 +60,10 @@ export async function upsertRefillItems(
       body: JSON.stringify(items),
     })
     if (!response.ok) throw new Error("Failed to upsert refill items")
+    return true
   } catch (error) {
     console.error("Error upserting refill items:", error)
+    return false
   }
 }
 

@@ -183,11 +183,26 @@ export function EditProductsContent({ onSaveRef, onDirtyChange }: EditProductsCo
   }, [])
 
   const handleSaveAll = React.useCallback(async () => {
+    let hadError = false
+    const remainingDrafts: Record<string, Product> = { ...drafts }
+
     for (const [code, draft] of Object.entries(drafts)) {
       const existing = products.find((p) => p.productCode === code)
-      if (!existing?.id) continue
+      if (!existing?.id) {
+        hadError = true
+        continue
+      }
       const finalCode = draft.productCode.trim().toUpperCase()
-      if (!finalCode || !draft.productName.trim()) continue
+      if (!finalCode || !draft.productName.trim()) {
+        hadError = true
+        continue
+      }
+
+      const duplicate = products.some((p) => p.productCode === finalCode && p.id !== existing.id)
+      if (duplicate) {
+        hadError = true
+        continue
+      }
 
       const res = await fetch("/api/products", {
         method: "PUT",
@@ -210,10 +225,18 @@ export function EditProductsContent({ onSaveRef, onDirtyChange }: EditProductsCo
               : p
           )
         )
+        delete remainingDrafts[code]
+      } else {
+        hadError = true
       }
     }
-    setDrafts({})
+
+    setDrafts(remainingDrafts)
     setEditingCode(null)
+
+    if (hadError) {
+      throw new Error("Some product changes could not be saved.")
+    }
   }, [drafts, products])
 
   React.useEffect(() => {
