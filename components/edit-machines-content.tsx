@@ -96,17 +96,17 @@ export function EditMachinesContent({ onSaveRef, onDirtyChange }: EditMachinesCo
   const [machines, setMachines] = React.useState<Machine[]>([])
   // drafts: confirmed edits pending Save (keyed by machine id string). Excludes "new" (in-progress add).
   const [drafts, setDrafts] = React.useState<Record<string, Machine>>({})
+  const [pendingAdds, setPendingAdds] = React.useState<Machine[]>([])
   const [editingKey, setEditingKey] = React.useState<string | null>(null)
   const [adding, setAdding] = React.useState(false)
   const [addDraft, setAddDraft] = React.useState<Machine>({ value: "", label: "", route: "" })
-  const [addLoading, setAddLoading] = React.useState(false)
   const [deleteTarget, setDeleteTarget] = React.useState<Machine | null>(null)
   const [loading, setLoading] = React.useState(true)
 
   React.useEffect(() => {
-    const dirty = Object.keys(drafts).length > 0
+    const dirty = Object.keys(drafts).length > 0 || pendingAdds.length > 0
     onDirtyChange?.(dirty)
-  }, [drafts, onDirtyChange])
+  }, [drafts, pendingAdds, onDirtyChange])
 
   React.useEffect(() => {
     getMachines().then((m) => { setMachines(m); setLoading(false) })
@@ -114,6 +114,8 @@ export function EditMachinesContent({ onSaveRef, onDirtyChange }: EditMachinesCo
 
   const handleSaveAll = React.useCallback(async () => {
     let hadError = false
+    const remainingPendingAdds: Machine[] = []
+    const currentCodes = new Set(machines.map((m) => m.value))
     const remainingDrafts: Record<string, Machine> = { ...drafts }
 
     for (const [key, draft] of Object.entries(drafts)) {
@@ -140,19 +142,49 @@ export function EditMachinesContent({ onSaveRef, onDirtyChange }: EditMachinesCo
       })
       if (updated) {
         setMachines((prev) => prev.map((m) => m.id === machineId ? updated : m))
+        currentCodes.delete(draft.value)
+        currentCodes.add(updated.value)
         delete remainingDrafts[key]
       } else {
         hadError = true
       }
     }
 
+    for (const pending of pendingAdds) {
+      const value = pending.value.trim().toUpperCase()
+      if (!value || currentCodes.has(value)) {
+        hadError = true
+        remainingPendingAdds.push(pending)
+        continue
+      }
+
+      const created = await createMachine({
+        value,
+        label: pending.label.trim() || value,
+        route: pending.route?.trim() ?? "",
+      })
+
+      if (created) {
+        currentCodes.add(created.value)
+      } else {
+        hadError = true
+        remainingPendingAdds.push(pending)
+      }
+    }
+
+    if (pendingAdds.length > 0) {
+      const latest = await getMachines()
+      setMachines(latest)
+    }
+
     setDrafts(remainingDrafts)
+    setPendingAdds(remainingPendingAdds)
     setEditingKey(null)
 
     if (hadError) {
       throw new Error("Some machine changes could not be saved.")
     }
-  }, [drafts, machines])
+  }, [drafts, pendingAdds, machines])
 
   React.useEffect(() => {
     if (onSaveRef) onSaveRef.current = handleSaveAll
@@ -164,21 +196,25 @@ export function EditMachinesContent({ onSaveRef, onDirtyChange }: EditMachinesCo
     setAddDraft({ value: "", label: "", route: "" })
   }
 
-  async function confirmNew() {
+  function confirmNew() {
     const value = addDraft.value.trim().toUpperCase()
     if (!value) return
-    if (machines.some((m) => m.value === value)) return
-    setAddLoading(true)
-    const created = await createMachine({
-      value,
-      label: addDraft.label.trim() || value,
-      route: addDraft.route?.trim() ?? "",
-    })
-    setAddLoading(false)
-    if (created) {
-      setMachines((prev) => [...prev, created])
-      setAdding(false)
-    }
+    const duplicateInMachines = machines.some((m) => m.value === value)
+    const duplicateInDrafts = Object.values(drafts).some((d) => d.value === value)
+    const duplicateInPending = pendingAdds.some((m) => m.value === value)
+    if (duplicateInMachines || duplicateInDrafts || duplicateInPending) return
+
+    setPendingAdds((prev) => [
+      ...prev,
+      {
+        ...addDraft,
+        value,
+        label: addDraft.label.trim() || value,
+        route: addDraft.route?.trim() ?? "",
+      },
+    ])
+    setAdding(false)
+    setAddDraft({ value: "", label: "", route: "" })
   }
 
   function cancelNew() {
@@ -194,12 +230,16 @@ export function EditMachinesContent({ onSaveRef, onDirtyChange }: EditMachinesCo
     setDrafts((prev) => ({ ...prev, [key]: prev[key] ?? { ...machine } }))
   }
 
-  function confirmEdit(key: string) {
+  function confirmEdit() {
     setEditingKey(null)
   }
 
   function cancelEdit(key: string) {
-    setDrafts((prev) => { const { [key]: _, ...rest } = prev; return rest })
+    setDrafts((prev) => {
+      const next = { ...prev }
+      delete next[key]
+      return next
+    })
     setEditingKey(null)
   }
 
@@ -208,7 +248,11 @@ export function EditMachinesContent({ onSaveRef, onDirtyChange }: EditMachinesCo
     const ok = await deleteMachine(deleteTarget.id)
     if (ok) {
       setMachines((prev) => prev.filter((m) => m.id !== deleteTarget.id))
-      setDrafts((prev) => { const { [deleteTarget.id!.toString()]: _, ...rest } = prev; return rest })
+      setDrafts((prev) => {
+        const next = { ...prev }
+        delete next[deleteTarget.id!.toString()]
+        return next
+      })
     }
     setDeleteTarget(null)
   }
@@ -263,9 +307,36 @@ export function EditMachinesContent({ onSaveRef, onDirtyChange }: EditMachinesCo
                     onDraftChange={setAddDraft}
                     onConfirm={confirmNew}
                     onCancel={cancelNew}
-                    confirmLoading={addLoading}
                   />
                 )}
+                {pendingAdds.map((machine) => (
+                  <TableRow
+                    key={`pending-${machine.value}`}
+                    className="h-10 border-l-2 border-l-amber-400 bg-amber-50/20 dark:bg-amber-950/10"
+                  >
+                    <TableCell className="py-1.5 px-4">
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-mono font-bold tracking-wider">{machine.value}</span>
+                        <span className="inline-block size-1.5 rounded-full bg-amber-400 shrink-0" />
+                      </div>
+                    </TableCell>
+                    <TableCell className="py-1.5 px-4 text-muted-foreground">{machine.label}</TableCell>
+                    <TableCell className="py-1.5 px-4 text-muted-foreground">
+                      {machine.route || <span className="text-muted-foreground/40">—</span>}
+                    </TableCell>
+                    <TableCell className="py-1.5 px-4">
+                      <div className="flex gap-1">
+                        <button
+                          onClick={() => setPendingAdds((prev) => prev.filter((m) => m.value !== machine.value))}
+                          disabled={adding || editingKey !== null}
+                          className="rounded p-1 hover:bg-red-100 dark:hover:bg-red-900/40 text-muted-foreground hover:text-red-500 disabled:opacity-30"
+                        >
+                          <Trash2Icon className="size-3.5" />
+                        </button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
                 {machines.map((machine) => {
                   const key = machine.id?.toString() ?? machine.value
                   const hasDraft = machine.id !== undefined && drafts[machine.id.toString()] !== undefined
@@ -277,7 +348,7 @@ export function EditMachinesContent({ onSaveRef, onDirtyChange }: EditMachinesCo
                         key={machine.id}
                         draft={drafts[key]}
                         onDraftChange={(m) => setDrafts((prev) => ({ ...prev, [key]: m }))}
-                        onConfirm={() => confirmEdit(key)}
+                        onConfirm={confirmEdit}
                         onCancel={() => cancelEdit(key)}
                       />
                     )

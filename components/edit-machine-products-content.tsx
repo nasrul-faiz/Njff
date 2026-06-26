@@ -141,13 +141,13 @@ export function EditMachineProductsContent({ onSaveRef, onDirtyChange }: EditMac
   const [placements, setPlacements] = React.useState<Placement[]>([])
   // drafts: confirmed edits pending Save (keyed by "machineId::slot")
   const [drafts, setDrafts] = React.useState<Record<string, Placement>>({})
+  const [pendingAdds, setPendingAdds] = React.useState<Placement[]>([])
   const [editingKey, setEditingKey] = React.useState<string | null>(null)
   const [adding, setAdding] = React.useState(false)
   const [addDraft, setAddDraft] = React.useState<Placement>({
     machineId: "", slot: "", productCode: "", maxCapacity: 0,
     stockIn: 0, overflow: 0, stockOut: 0, currentInventory: 0,
   })
-  const [addLoading, setAddLoading] = React.useState(false)
   const [deleteTarget, setDeleteTarget] = React.useState<Placement | null>(null)
   const [selectedMachine, setSelectedMachine] = React.useState("")
   const [loading, setLoading] = React.useState(true)
@@ -155,8 +155,8 @@ export function EditMachineProductsContent({ onSaveRef, onDirtyChange }: EditMac
   const placementKey = (p: Placement) => `${p.machineId}::${p.slot}`
 
   React.useEffect(() => {
-    onDirtyChange?.(Object.keys(drafts).length > 0)
-  }, [drafts, onDirtyChange])
+    onDirtyChange?.(Object.keys(drafts).length > 0 || pendingAdds.length > 0)
+  }, [drafts, pendingAdds, onDirtyChange])
 
   React.useEffect(() => {
     Promise.all([getMachines(), getRefillData(), getProducts()]).then(([ms, data, prods]) => {
@@ -193,11 +193,18 @@ export function EditMachineProductsContent({ onSaveRef, onDirtyChange }: EditMac
     .filter((p) => p.machineId === selectedMachine)
     .sort((a, b) => a.slot.localeCompare(b.slot))
 
+  const visiblePendingAdds = pendingAdds
+    .filter((p) => p.machineId === selectedMachine)
+    .sort((a, b) => a.slot.localeCompare(b.slot))
+
   const handleSaveAll = React.useCallback(async () => {
     const itemsToSave: Array<RefillItem & { machine_id: string }> = []
     const keysToSave: string[] = []
     const remainingDrafts: Record<string, Placement> = { ...drafts }
+    const remainingPendingAdds: Placement[] = []
     let hadError = false
+    let saveSucceeded = false
+    const existingPlacementKeys = new Set(placements.map((p) => placementKey(p)))
 
     for (const [key, draft] of Object.entries(drafts)) {
       const slot = draft.slot.trim().toUpperCase()
@@ -219,11 +226,50 @@ export function EditMachineProductsContent({ onSaveRef, onDirtyChange }: EditMac
         stockOut: draft.stockOut, currentInventory: draft.currentInventory,
       })
       keysToSave.push(key)
+      existingPlacementKeys.delete(key)
+      existingPlacementKeys.add(`${draft.machineId}::${slot}`)
+    }
+
+    for (const pending of pendingAdds) {
+      const slot = pending.slot.trim().toUpperCase()
+      const code = pending.productCode.trim().toUpperCase()
+      const key = `${pending.machineId}::${slot}`
+      if (!pending.machineId || !slot || !code) {
+        hadError = true
+        remainingPendingAdds.push(pending)
+        continue
+      }
+      if (existingPlacementKeys.has(key)) {
+        hadError = true
+        remainingPendingAdds.push(pending)
+        continue
+      }
+      const product = productMap.get(code)
+      if (!product) {
+        hadError = true
+        remainingPendingAdds.push(pending)
+        continue
+      }
+
+      itemsToSave.push({
+        machine_id: pending.machineId,
+        slot,
+        productCode: code,
+        productName: product.productName,
+        image: product.image,
+        maxCapacity: Math.max(0, pending.maxCapacity),
+        stockIn: 0,
+        overflow: 0,
+        stockOut: 0,
+        currentInventory: 0,
+      })
+      existingPlacementKeys.add(key)
     }
 
     if (itemsToSave.length > 0) {
       const saved = await upsertRefillItems(itemsToSave)
       if (saved) {
+        saveSucceeded = true
         for (const key of keysToSave) {
           delete remainingDrafts[key]
         }
@@ -232,7 +278,7 @@ export function EditMachineProductsContent({ onSaveRef, onDirtyChange }: EditMac
       }
     }
 
-    if (keysToSave.length > 0) {
+    if (itemsToSave.length > 0) {
       const [data, prods] = await Promise.all([getRefillData(), getProducts()])
       const flat: Placement[] = []
       for (const [machineId, items] of Object.entries(data)) {
@@ -253,12 +299,17 @@ export function EditMachineProductsContent({ onSaveRef, onDirtyChange }: EditMac
     }
 
     setDrafts(remainingDrafts)
+    if (itemsToSave.length === 0) {
+      setPendingAdds(remainingPendingAdds)
+    } else if (saveSucceeded) {
+      setPendingAdds(remainingPendingAdds)
+    }
     setEditingKey(null)
 
     if (hadError) {
       throw new Error("Some machine product changes could not be saved.")
     }
-  }, [drafts, productMap])
+  }, [drafts, pendingAdds, placements, productMap])
 
   React.useEffect(() => {
     if (onSaveRef) onSaveRef.current = handleSaveAll
@@ -273,39 +324,34 @@ export function EditMachineProductsContent({ onSaveRef, onDirtyChange }: EditMac
     })
   }
 
-  async function confirmNew() {
+  function confirmNew() {
     const slot = addDraft.slot.trim().toUpperCase()
     const code = addDraft.productCode.trim().toUpperCase()
     if (!addDraft.machineId || !slot || !code) return
     const product = productMap.get(code)
     if (!product) return
-    setAddLoading(true)
-    const saved = await upsertRefillItems([{
-      machine_id: addDraft.machineId, slot, productCode: code,
-      productName: product.productName, image: product.image,
-      maxCapacity: Math.max(0, addDraft.maxCapacity),
-      stockIn: 0, overflow: 0, stockOut: 0, currentInventory: 0,
-    }])
+    const key = `${addDraft.machineId}::${slot}`
+    const existsInPlacements = placements.some((p) => placementKey(p) === key)
+    const existsInDrafts = Object.entries(drafts).some(([draftKey, p]) => {
+      const draftSlot = p.slot.trim().toUpperCase()
+      return draftKey === key || `${p.machineId}::${draftSlot}` === key
+    })
+    const existsInPending = pendingAdds.some((p) => `${p.machineId}::${p.slot}` === key)
+    if (existsInPlacements || existsInDrafts || existsInPending) return
 
-    if (!saved) {
-      setAddLoading(false)
-      return
-    }
-
-    const data = await getRefillData()
-    const flat: Placement[] = []
-    for (const [machineId, items] of Object.entries(data)) {
-      for (const item of items) {
-        flat.push({
-          machineId, slot: item.slot, productCode: item.productCode,
-          maxCapacity: item.maxCapacity, stockIn: item.stockIn,
-          overflow: item.overflow, stockOut: item.stockOut,
-          currentInventory: item.currentInventory,
-        })
-      }
-    }
-    setPlacements(flat)
-    setAddLoading(false)
+    setPendingAdds((prev) => [
+      ...prev,
+      {
+        machineId: addDraft.machineId,
+        slot,
+        productCode: code,
+        maxCapacity: Math.max(0, addDraft.maxCapacity),
+        stockIn: 0,
+        overflow: 0,
+        stockOut: 0,
+        currentInventory: 0,
+      },
+    ])
     setAdding(false)
   }
 
@@ -321,12 +367,16 @@ export function EditMachineProductsContent({ onSaveRef, onDirtyChange }: EditMac
     setDrafts((prev) => ({ ...prev, [key]: prev[key] ?? { ...placement } }))
   }
 
-  function confirmEdit(key: string) {
+  function confirmEdit() {
     setEditingKey(null)
   }
 
   function cancelEdit(key: string) {
-    setDrafts((prev) => { const { [key]: _, ...rest } = prev; return rest })
+    setDrafts((prev) => {
+      const next = { ...prev }
+      delete next[key]
+      return next
+    })
     setEditingKey(null)
   }
 
@@ -335,7 +385,11 @@ export function EditMachineProductsContent({ onSaveRef, onDirtyChange }: EditMac
     await deleteRefillItem(deleteTarget.machineId, deleteTarget.slot)
     const key = placementKey(deleteTarget)
     setPlacements((prev) => prev.filter((p) => placementKey(p) !== key))
-    setDrafts((prev) => { const { [key]: _, ...rest } = prev; return rest })
+    setDrafts((prev) => {
+      const next = { ...prev }
+      delete next[key]
+      return next
+    })
     setDeleteTarget(null)
   }
 
@@ -410,9 +464,57 @@ export function EditMachineProductsContent({ onSaveRef, onDirtyChange }: EditMac
                     onDraftChange={setAddDraft}
                     onConfirm={confirmNew}
                     onCancel={cancelNew}
-                    confirmLoading={addLoading}
                   />
                 )}
+                {visiblePendingAdds.map((placement) => {
+                  const key = `${placement.machineId}::${placement.slot}`
+                  const product = productMap.get(placement.productCode)
+
+                  return (
+                    <TableRow
+                      key={`pending-${key}`}
+                      className="h-10 border-l-2 border-l-amber-400 bg-amber-50/20 dark:bg-amber-950/10"
+                    >
+                      <TableCell className="text-center py-1.5">
+                        <div className="flex items-center justify-center gap-1.5">
+                          <span className="font-mono font-bold tracking-wider">{placement.slot}</span>
+                          <span className="inline-block size-1.5 rounded-full bg-amber-400 shrink-0" />
+                        </div>
+                      </TableCell>
+                      <TableCell className="py-1.5">
+                        <div className="mx-auto flex max-w-[240px] items-center gap-2">
+                          {product?.image ? (
+                            <ImageLightbox src={product.image} alt={product.productName}>
+                              <div className="h-7 w-7 rounded-md overflow-hidden border bg-muted shrink-0">
+                                <img src={product.image} alt={product.productName} className="h-full w-full object-cover" />
+                              </div>
+                            </ImageLightbox>
+                          ) : (
+                            <div className="h-7 w-7 rounded-md border bg-muted shrink-0" />
+                          )}
+                          <div className="flex flex-col min-w-0">
+                            <span className="font-medium truncate">{product?.productName ?? "Unknown"}</span>
+                            <span className="font-mono text-[10px] text-muted-foreground">{placement.productCode}</span>
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-center py-1.5 text-muted-foreground tabular-nums">
+                        {placement.maxCapacity}
+                      </TableCell>
+                      <TableCell className="py-1.5">
+                        <div className="flex justify-center gap-1">
+                          <button
+                            onClick={() => setPendingAdds((prev) => prev.filter((p) => `${p.machineId}::${p.slot}` !== key))}
+                            disabled={adding || editingKey !== null}
+                            className="rounded p-1 hover:bg-red-100 dark:hover:bg-red-900/40 text-muted-foreground hover:text-red-500 disabled:opacity-30"
+                          >
+                            <Trash2Icon className="size-3.5" />
+                          </button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  )
+                })}
                 {visiblePlacements.map((placement) => {
                   const key = placementKey(placement)
                   const hasDraft = drafts[key] !== undefined
@@ -427,7 +529,7 @@ export function EditMachineProductsContent({ onSaveRef, onDirtyChange }: EditMac
                         draft={drafts[key]}
                         products={products}
                         onDraftChange={(p) => setDrafts((prev) => ({ ...prev, [key]: p }))}
-                        onConfirm={() => confirmEdit(key)}
+                        onConfirm={confirmEdit}
                         onCancel={() => cancelEdit(key)}
                       />
                     )
@@ -485,7 +587,7 @@ export function EditMachineProductsContent({ onSaveRef, onDirtyChange }: EditMac
                     </TableRow>
                   )
                 })}
-                {selectedMachine && visiblePlacements.length === 0 && !adding && (
+                {selectedMachine && visiblePlacements.length === 0 && visiblePendingAdds.length === 0 && !adding && (
                   <TableRow>
                     <TableCell colSpan={4} className="py-10 text-center text-muted-foreground">
                       No products assigned to this machine yet.

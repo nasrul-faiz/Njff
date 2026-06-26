@@ -167,16 +167,16 @@ export function EditProductsContent({ onSaveRef, onDirtyChange }: EditProductsCo
   const [products, setProducts] = React.useState<Product[]>([])
   // drafts: confirmed edits pending Save, keyed by productCode
   const [drafts, setDrafts] = React.useState<Record<string, Product>>({})
+  const [pendingAdds, setPendingAdds] = React.useState<Product[]>([])
   const [editingCode, setEditingCode] = React.useState<string | null>(null)
   const [adding, setAdding] = React.useState(false)
   const [addDraft, setAddDraft] = React.useState<Product>(emptyProduct())
-  const [addLoading, setAddLoading] = React.useState(false)
   const [deleteTarget, setDeleteTarget] = React.useState<Product | null>(null)
   const [loading, setLoading] = React.useState(true)
 
   React.useEffect(() => {
-    onDirtyChange?.(Object.keys(drafts).length > 0)
-  }, [drafts, onDirtyChange])
+    onDirtyChange?.(Object.keys(drafts).length > 0 || pendingAdds.length > 0)
+  }, [drafts, pendingAdds, onDirtyChange])
 
   React.useEffect(() => {
     getProducts().then((prods) => { setProducts(prods); setLoading(false) })
@@ -184,7 +184,10 @@ export function EditProductsContent({ onSaveRef, onDirtyChange }: EditProductsCo
 
   const handleSaveAll = React.useCallback(async () => {
     let hadError = false
+    let hadSuccess = false
     const remainingDrafts: Record<string, Product> = { ...drafts }
+    const remainingPendingAdds: Product[] = []
+    const currentCodes = new Set(products.map((p) => p.productCode))
 
     for (const [code, draft] of Object.entries(drafts)) {
       const existing = products.find((p) => p.productCode === code)
@@ -218,6 +221,7 @@ export function EditProductsContent({ onSaveRef, onDirtyChange }: EditProductsCo
         }),
       })
       if (res.ok) {
+        hadSuccess = true
         setProducts((prev) =>
           prev.map((p) =>
             p.productCode === code
@@ -225,19 +229,64 @@ export function EditProductsContent({ onSaveRef, onDirtyChange }: EditProductsCo
               : p
           )
         )
+        if (finalCode !== code) {
+          currentCodes.delete(code)
+          currentCodes.add(finalCode)
+        }
         delete remainingDrafts[code]
       } else {
         hadError = true
       }
     }
 
+    for (const pending of pendingAdds) {
+      const finalCode = pending.productCode.trim().toUpperCase()
+      const finalName = pending.productName.trim()
+      if (!finalCode || !finalName) {
+        hadError = true
+        remainingPendingAdds.push(pending)
+        continue
+      }
+      if (currentCodes.has(finalCode)) {
+        hadError = true
+        remainingPendingAdds.push(pending)
+        continue
+      }
+
+      const res = await fetch("/api/products", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          product_code: finalCode,
+          product_name: finalName,
+          image: pending.image.trim(),
+          max_quantity: pending.maxQuantity ?? 0,
+          type: pending.type ?? "",
+        }),
+      })
+
+      if (res.ok) {
+        hadSuccess = true
+        currentCodes.add(finalCode)
+      } else {
+        hadError = true
+        remainingPendingAdds.push(pending)
+      }
+    }
+
+    if (hadSuccess) {
+      const latest = await getProducts()
+      setProducts(latest)
+    }
+
     setDrafts(remainingDrafts)
+    setPendingAdds(remainingPendingAdds)
     setEditingCode(null)
 
     if (hadError) {
       throw new Error("Some product changes could not be saved.")
     }
-  }, [drafts, products])
+  }, [drafts, pendingAdds, products])
 
   React.useEffect(() => {
     if (onSaveRef) onSaveRef.current = handleSaveAll
@@ -249,39 +298,31 @@ export function EditProductsContent({ onSaveRef, onDirtyChange }: EditProductsCo
     setAddDraft(emptyProduct())
   }
 
-  async function confirmNew() {
+  function confirmNew() {
     const finalCode = addDraft.productCode.trim().toUpperCase()
-    if (!finalCode || !addDraft.productName.trim()) return
-    setAddLoading(true)
-    const res = await fetch("/api/products", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        product_code: finalCode,
-        product_name: addDraft.productName.trim(),
+    const finalName = addDraft.productName.trim()
+    if (!finalCode || !finalName) return
+
+    const duplicateInProducts = products.some((p) => p.productCode === finalCode)
+    const duplicateInDrafts = Object.values(drafts).some(
+      (d) => d.productCode.trim().toUpperCase() === finalCode
+    )
+    const duplicateInPending = pendingAdds.some((p) => p.productCode === finalCode)
+    if (duplicateInProducts || duplicateInDrafts || duplicateInPending) return
+
+    setPendingAdds((prev) => [
+      ...prev,
+      {
+        ...addDraft,
+        productCode: finalCode,
+        productName: finalName,
         image: addDraft.image.trim(),
-        max_quantity: addDraft.maxQuantity ?? 0,
+        maxQuantity: addDraft.maxQuantity ?? 0,
         type: addDraft.type ?? "",
-      }),
-    })
-    setAddLoading(false)
-    if (res.ok) {
-      const created = await res.json()
-      setProducts((prev) => {
-        const exists = prev.some((p) => p.productCode === finalCode)
-        if (exists) return prev
-        return [...prev, {
-          id: created.id,
-          productCode: created.product_code,
-          productName: created.product_name,
-          image: created.image ?? "",
-          maxQuantity: created.max_quantity ?? 0,
-          type: created.type ?? "",
-        }]
-      })
-      setAdding(false)
-      setAddDraft(emptyProduct())
-    }
+      },
+    ])
+    setAdding(false)
+    setAddDraft(emptyProduct())
   }
 
   function cancelNew() {
@@ -297,12 +338,16 @@ export function EditProductsContent({ onSaveRef, onDirtyChange }: EditProductsCo
     setDrafts((prev) => ({ ...prev, [code]: prev[code] ?? { ...product } }))
   }
 
-  function confirmEdit(code: string) {
+  function confirmEdit() {
     setEditingCode(null)
   }
 
   function cancelEdit(code: string) {
-    setDrafts((prev) => { const { [code]: _, ...rest } = prev; return rest })
+    setDrafts((prev) => {
+      const next = { ...prev }
+      delete next[code]
+      return next
+    })
     setEditingCode(null)
   }
 
@@ -312,7 +357,11 @@ export function EditProductsContent({ onSaveRef, onDirtyChange }: EditProductsCo
     if (res.ok) {
       setProducts((prev) => prev.filter((p) => p.id !== deleteTarget.id))
       if (deleteTarget.productCode) {
-        setDrafts((prev) => { const { [deleteTarget.productCode]: _, ...rest } = prev; return rest })
+        setDrafts((prev) => {
+          const next = { ...prev }
+          delete next[deleteTarget.productCode]
+          return next
+        })
       }
     }
     setDeleteTarget(null)
@@ -367,9 +416,52 @@ export function EditProductsContent({ onSaveRef, onDirtyChange }: EditProductsCo
                   onDraftChange={setAddDraft}
                   onConfirm={confirmNew}
                   onCancel={cancelNew}
-                  confirmLoading={addLoading}
                 />
               )}
+              {pendingAdds.map((pending) => (
+                <TableRow
+                  key={`pending-${pending.productCode}`}
+                  className="h-10 border-l-2 border-l-amber-400 bg-amber-50/20 dark:bg-amber-950/10"
+                >
+                  <TableCell className="text-center py-1.5 text-muted-foreground font-mono">
+                    <div className="flex items-center justify-center gap-1">
+                      {pending.productCode}
+                      <span className="inline-block size-1.5 rounded-full bg-amber-400 shrink-0" />
+                    </div>
+                  </TableCell>
+                  <TableCell className="py-1.5">
+                    <div className="flex items-center gap-2">
+                      {pending.image ? (
+                        <ImageLightbox src={pending.image} alt={pending.productName}>
+                          <div className="h-7 w-7 rounded-md overflow-hidden border bg-muted shrink-0">
+                            <img src={pending.image} alt={pending.productName} className="h-full w-full object-cover" />
+                          </div>
+                        </ImageLightbox>
+                      ) : (
+                        <div className="h-7 w-7 rounded-md border bg-muted shrink-0" />
+                      )}
+                      <span className="font-medium truncate max-w-[200px]">{pending.productName}</span>
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-center py-1.5 text-muted-foreground">
+                    {pending.type || <span className="text-muted-foreground/40">—</span>}
+                  </TableCell>
+                  <TableCell className="text-center py-1.5 tabular-nums text-muted-foreground">
+                    {(pending.maxQuantity ?? 0) > 0 ? pending.maxQuantity : <span className="text-muted-foreground/40">—</span>}
+                  </TableCell>
+                  <TableCell className="py-1.5">
+                    <div className="flex justify-center gap-1">
+                      <button
+                        onClick={() => setPendingAdds((prev) => prev.filter((p) => p.productCode !== pending.productCode))}
+                        disabled={adding || editingCode !== null}
+                        className="rounded p-1 hover:bg-red-100 dark:hover:bg-red-900/40 text-muted-foreground hover:text-red-500 disabled:opacity-30"
+                      >
+                        <Trash2Icon className="size-3.5" />
+                      </button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
               {products.map((item) => {
                 const hasDraft = drafts[item.productCode] !== undefined
                 const isEditing = editingCode === item.productCode
@@ -380,7 +472,7 @@ export function EditProductsContent({ onSaveRef, onDirtyChange }: EditProductsCo
                       key={item.productCode}
                       draft={drafts[item.productCode]}
                       onDraftChange={(p) => setDrafts((prev) => ({ ...prev, [item.productCode]: p }))}
-                      onConfirm={() => confirmEdit(item.productCode)}
+                      onConfirm={confirmEdit}
                       onCancel={() => cancelEdit(item.productCode)}
                     />
                   )
