@@ -18,6 +18,8 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { getAllDOs, type DeliveryOrder } from "@/lib/do-store"
+import { getRefillData, type RefillDataMap } from "@/lib/refill-store"
+import type { RefillItem } from "@/components/refill-table"
 
 function formatDate(dateStr: string) {
   const d = new Date(dateStr)
@@ -31,6 +33,26 @@ function formatDate(dateStr: string) {
 function formatTime(dateStr: string) {
   const d = new Date(dateStr)
   return d.toLocaleTimeString("en-MY", { hour: "2-digit", minute: "2-digit" })
+}
+
+function compareSlots(a: string, b: string) {
+  return a.trim().toUpperCase().localeCompare(b.trim().toUpperCase(), undefined, {
+    numeric: true,
+    sensitivity: "base",
+  })
+}
+
+interface DetailRow {
+  slot: string
+  productCode: string
+  productName: string
+  image: string
+  qty: number
+  stockIn: number
+  overflow: number
+  stockOut: number
+  currentInventory: number
+  maxCapacity: number
 }
 
 function ActionMenu({
@@ -90,11 +112,55 @@ function ActionMenu({
 
 function DODetailSheet({
   order,
+  refillItems,
   onClose,
 }: {
   order: DeliveryOrder
+  refillItems: RefillItem[]
   onClose: () => void
 }) {
+  const refillBySlot = React.useMemo(
+    () => new Map(refillItems.map((item) => [item.slot, item])),
+    [refillItems]
+  )
+
+  const detailRows = React.useMemo<DetailRow[]>(
+    () =>
+      [...order.items]
+        .sort((a, b) => compareSlots(a.slot, b.slot))
+        .map((item) => {
+          const refill = refillBySlot.get(item.slot)
+          return {
+            slot: item.slot,
+            productCode: item.productCode,
+            productName: item.productName,
+            image: item.image ?? refill?.image ?? "",
+            qty: item.qty,
+            stockIn: refill?.stockIn ?? 0,
+            overflow: refill?.overflow ?? 0,
+            stockOut: refill?.stockOut ?? 0,
+            currentInventory: refill?.currentInventory ?? 0,
+            maxCapacity: refill?.maxCapacity ?? 0,
+          }
+        }),
+    [order.items, refillBySlot]
+  )
+
+  const totals = React.useMemo(
+    () =>
+      detailRows.reduce(
+        (acc, row) => ({
+          qty: acc.qty + row.qty,
+          stockIn: acc.stockIn + row.stockIn,
+          overflow: acc.overflow + row.overflow,
+          stockOut: acc.stockOut + row.stockOut,
+          currentInventory: acc.currentInventory + row.currentInventory,
+        }),
+        { qty: 0, stockIn: 0, overflow: 0, stockOut: 0, currentInventory: 0 }
+      ),
+    [detailRows]
+  )
+
   return (
     <div className="rounded-xl border bg-card overflow-hidden">
       <div className="px-4 py-3 border-b bg-muted/40 flex items-center justify-between">
@@ -150,18 +216,40 @@ function DODetailSheet({
         </div>
       </div>
 
-      <div className="overflow-x-auto">
-        <Table className="text-xs">
+      <div className="grid grid-cols-2 gap-px border-b bg-border sm:grid-cols-5">
+        {[
+          { label: "Order Qty", value: totals.qty },
+          { label: "Stock In", value: totals.stockIn },
+          { label: "Overflow", value: totals.overflow },
+          { label: "Stock Out", value: totals.stockOut },
+          { label: "Inventory", value: totals.currentInventory },
+        ].map((item) => (
+          <div key={item.label} className="bg-card px-4 py-3 text-xs">
+            <p className="text-[10px] font-semibold tracking-widest uppercase text-muted-foreground">
+              {item.label}
+            </p>
+            <p className="mt-1 font-bold tabular-nums">{item.value}</p>
+          </div>
+        ))}
+      </div>
+
+      <div className="max-h-[420px] overflow-auto">
+        <Table className="text-xs min-w-[920px]">
           <TableHeader>
             <TableRow className="hover:bg-transparent">
               <TableHead className="text-center text-[11px] font-semibold tracking-wide py-2">Slot</TableHead>
               <TableHead className="text-center text-[11px] font-semibold tracking-wide py-2"></TableHead>
               <TableHead className="text-center text-[11px] font-semibold tracking-wide py-2">Product Name</TableHead>
-              <TableHead className="text-center text-[11px] font-semibold tracking-wide py-2">Qty</TableHead>
+              <TableHead className="text-center text-[11px] font-semibold tracking-wide py-2">DO Qty</TableHead>
+              <TableHead className="text-center text-[11px] font-semibold tracking-wide py-2">Stock In</TableHead>
+              <TableHead className="text-center text-[11px] font-semibold tracking-wide py-2">Overflow</TableHead>
+              <TableHead className="text-center text-[11px] font-semibold tracking-wide py-2">Stock Out</TableHead>
+              <TableHead className="text-center text-[11px] font-semibold tracking-wide py-2">Inventory</TableHead>
+              <TableHead className="text-center text-[11px] font-semibold tracking-wide py-2">Max</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {order.items.map((item) => (
+            {detailRows.map((item) => (
               <TableRow key={`${item.slot}-${item.productCode}`} className="h-9">
                 <TableCell className="text-center py-1.5">
                   <span className="font-mono font-bold tracking-wider">{item.slot}</span>
@@ -180,6 +268,21 @@ function DODetailSheet({
                 <TableCell className="text-center py-1.5 font-semibold tabular-nums">
                   {item.qty}
                 </TableCell>
+                <TableCell className="text-center py-1.5 tabular-nums text-muted-foreground">
+                  {item.stockIn}
+                </TableCell>
+                <TableCell className="text-center py-1.5 tabular-nums text-muted-foreground">
+                  {item.overflow}
+                </TableCell>
+                <TableCell className="text-center py-1.5 tabular-nums text-muted-foreground">
+                  {item.stockOut}
+                </TableCell>
+                <TableCell className="text-center py-1.5 tabular-nums text-muted-foreground">
+                  {item.currentInventory}
+                </TableCell>
+                <TableCell className="text-center py-1.5 tabular-nums text-muted-foreground">
+                  {item.maxCapacity}
+                </TableCell>
               </TableRow>
             ))}
           </TableBody>
@@ -187,12 +290,10 @@ function DODetailSheet({
       </div>
 
       <div className="px-4 py-3 border-t bg-muted/20 flex items-center justify-between text-xs">
-        <span className="text-muted-foreground">{order.items.length} items</span>
+        <span className="text-muted-foreground">{detailRows.length} items</span>
         <div className="flex items-center gap-2">
           <span className="text-muted-foreground">Total units:</span>
-          <span className="font-bold tabular-nums">
-            {order.items.reduce((a, b) => a + b.qty, 0)}
-          </span>
+          <span className="font-bold tabular-nums">{totals.qty}</span>
         </div>
       </div>
     </div>
@@ -201,18 +302,25 @@ function DODetailSheet({
 
 export function ViewDOContent() {
   const [allDOs, setAllDOs] = React.useState<DeliveryOrder[]>([])
+  const [refillData, setRefillData] = React.useState<RefillDataMap>({})
   const [loading, setLoading] = React.useState(true)
   const [search, setSearch] = React.useState("")
   const [viewingDO, setViewingDO] = React.useState<DeliveryOrder | null>(null)
   const inputRef = React.useRef<HTMLInputElement>(null)
 
   React.useEffect(() => {
-    getAllDOs().then((dos) => {
+    Promise.all([getAllDOs(), getRefillData()]).then(([dos, refill]) => {
       setAllDOs(dos)
+      setRefillData(refill)
       setLoading(false)
     })
     inputRef.current?.focus()
   }, [])
+
+  const selectedRefillItems = React.useMemo(
+    () => (viewingDO ? refillData[viewingDO.machineId] ?? [] : []),
+    [refillData, viewingDO]
+  )
 
   const filtered = React.useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -264,7 +372,11 @@ export function ViewDOContent() {
 
       {/* Detail view (shown when View is clicked) */}
       {viewingDO && (
-        <DODetailSheet order={viewingDO} onClose={() => setViewingDO(null)} />
+        <DODetailSheet
+          order={viewingDO}
+          refillItems={selectedRefillItems}
+          onClose={() => setViewingDO(null)}
+        />
       )}
 
       {/* Results table */}
