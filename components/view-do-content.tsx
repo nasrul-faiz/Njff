@@ -7,7 +7,8 @@ import {
   EyeIcon,
   DownloadIcon,
   XIcon,
-  CheckCircleIcon,
+  ClipboardCopyIcon,
+  CheckIcon,
 } from "lucide-react"
 import {
   Table,
@@ -55,9 +56,6 @@ interface DetailRow {
   productName: string
   image: string
   qty: number
-  stockIn: number
-  overflow: number
-  stockOut: number
   currentInventory: number
   maxCapacity: number
 }
@@ -126,6 +124,8 @@ function DODetailSheet({
   refillItems: RefillItem[]
   onClose: () => void
 }) {
+  const [copiedCode, setCopiedCode] = React.useState("")
+
   const refillBySlot = React.useMemo(
     () => new Map(refillItems.map((item) => [item.slot, item])),
     [refillItems]
@@ -143,9 +143,6 @@ function DODetailSheet({
             productName: item.productName,
             image: item.image ?? refill?.image ?? "",
             qty: item.qty,
-            stockIn: refill?.stockIn ?? 0,
-            overflow: refill?.overflow ?? 0,
-            stockOut: refill?.stockOut ?? 0,
             currentInventory: refill?.currentInventory ?? 0,
             maxCapacity: refill?.maxCapacity ?? 0,
           }
@@ -158,15 +155,24 @@ function DODetailSheet({
       detailRows.reduce(
         (acc, row) => ({
           qty: acc.qty + row.qty,
-          stockIn: acc.stockIn + row.stockIn,
-          overflow: acc.overflow + row.overflow,
-          stockOut: acc.stockOut + row.stockOut,
           currentInventory: acc.currentInventory + row.currentInventory,
         }),
-        { qty: 0, stockIn: 0, overflow: 0, stockOut: 0, currentInventory: 0 }
+        { qty: 0, currentInventory: 0 }
       ),
     [detailRows]
   )
+
+  async function handleCopyCode() {
+    try {
+      await navigator.clipboard.writeText(order.code)
+      setCopiedCode(order.code)
+      window.setTimeout(() => {
+        setCopiedCode((current) => (current === order.code ? "" : current))
+      }, 1200)
+    } catch {
+      setCopiedCode("")
+    }
+  }
 
   return (
     <Dialog open onOpenChange={(open) => { if (!open) onClose() }}>
@@ -175,64 +181,53 @@ function DODetailSheet({
         className="!top-0 !left-0 !h-screen !w-screen !max-w-none !translate-x-0 !translate-y-0 rounded-none p-0"
       >
         <div className="flex h-full flex-col bg-card">
-          <DialogHeader className="border-b bg-muted/30 px-6 py-4 pr-14">
-            <div className="flex items-center gap-2">
-              <CheckCircleIcon className="size-4 text-emerald-600" />
-              <DialogTitle>DO Detail</DialogTitle>
-            </div>
-            <DialogDescription>
-              {order.code} • {order.machineId} ({order.machineLabel}) • {formatDate(order.date)} {formatTime(order.date)}
-            </DialogDescription>
-            <div className="grid grid-cols-2 gap-4 pt-2 text-xs sm:grid-cols-4">
-              <div>
-                <p className="text-[10px] text-muted-foreground font-semibold tracking-widest uppercase mb-0.5">
-                  DO Code
+          <DialogHeader className="border-b bg-muted/40 px-4 py-3 pr-14">
+            <div className="flex items-start justify-between gap-4">
+              <div className="space-y-1.5 text-left">
+                <DialogTitle>View DO</DialogTitle>
+                <DialogDescription className="text-sm text-foreground">
+                  <span className="font-semibold">{order.machineId}</span> - {order.machineLabel}
+                </DialogDescription>
+                <p className="text-xs text-muted-foreground">
+                  {formatDate(order.date)} {formatTime(order.date)}
                 </p>
-                <p className="font-mono font-bold">{order.code}</p>
+                <div className="inline-flex items-center gap-2 rounded-md border bg-background px-2.5 py-1.5">
+                  <span className="text-[10px] font-semibold tracking-wider text-muted-foreground">DO</span>
+                  <span className="font-mono text-xs font-bold tracking-wider">{order.code}</span>
+                  <button
+                    type="button"
+                    onClick={handleCopyCode}
+                    className="rounded p-0.5 text-muted-foreground hover:text-foreground"
+                    aria-label="Copy DO code"
+                    title="Copy DO code"
+                  >
+                    {copiedCode === order.code ? (
+                      <CheckIcon className="size-3.5 text-emerald-600" />
+                    ) : (
+                      <ClipboardCopyIcon className="size-3.5" />
+                    )}
+                  </button>
+                </div>
               </div>
-              <div>
-                <p className="text-[10px] text-muted-foreground font-semibold tracking-widest uppercase mb-0.5">
-                  Machine
-                </p>
-                <p className="font-bold">{order.machineId}</p>
-                <p className="text-muted-foreground">{order.machineLabel}</p>
-              </div>
-              <div>
-                <p className="text-[10px] text-muted-foreground font-semibold tracking-widest uppercase mb-0.5">
-                  Date
-                </p>
-                <p className="font-medium">{formatDate(order.date)}</p>
-                <p className="text-muted-foreground">{formatTime(order.date)}</p>
-              </div>
-              <div>
-                <p className="text-[10px] text-muted-foreground font-semibold tracking-widest uppercase mb-0.5">
-                  Status
-                </p>
-                <span
-                  className={`inline-flex px-2 py-0.5 rounded text-[10px] font-semibold ${
-                    order.status === "completed"
-                      ? "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400"
-                      : "bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400"
-                  }`}
-                >
+
+              <div className="text-right">
+                <p className="text-[10px] font-semibold tracking-widest uppercase text-muted-foreground">Status</p>
+                <p className="mt-0.5 text-xs font-semibold uppercase tracking-wide text-foreground">
                   {order.status}
-                </span>
+                </p>
               </div>
             </div>
           </DialogHeader>
 
           <div className="min-h-0 flex-1 overflow-auto">
-            <Table className="text-xs min-w-[920px]">
+            <Table className="text-xs min-w-[760px]">
               <TableHeader>
                 <TableRow className="hover:bg-transparent">
                   <TableHead className="text-center text-[11px] font-semibold tracking-wide py-2">Slot</TableHead>
+                  <TableHead className="text-center text-[11px] font-semibold tracking-wide py-2">DO Qty</TableHead>
+                  <TableHead className="text-center text-[11px] font-semibold tracking-wide py-2">Inventory</TableHead>
                   <TableHead className="text-center text-[11px] font-semibold tracking-wide py-2"></TableHead>
                   <TableHead className="text-center text-[11px] font-semibold tracking-wide py-2">Product Name</TableHead>
-                  <TableHead className="text-center text-[11px] font-semibold tracking-wide py-2">DO Qty</TableHead>
-                  <TableHead className="text-center text-[11px] font-semibold tracking-wide py-2">Stock In</TableHead>
-                  <TableHead className="text-center text-[11px] font-semibold tracking-wide py-2">Overflow</TableHead>
-                  <TableHead className="text-center text-[11px] font-semibold tracking-wide py-2">Stock Out</TableHead>
-                  <TableHead className="text-center text-[11px] font-semibold tracking-wide py-2">Inventory</TableHead>
                   <TableHead className="text-center text-[11px] font-semibold tracking-wide py-2">Max</TableHead>
                 </TableRow>
               </TableHeader>
@@ -241,6 +236,12 @@ function DODetailSheet({
                   <TableRow key={`${item.slot}-${item.productCode}`} className="h-9">
                     <TableCell className="text-center py-1.5">
                       <span className="font-mono font-bold tracking-wider">{item.slot}</span>
+                    </TableCell>
+                    <TableCell className="text-center py-1.5 font-semibold tabular-nums">
+                      {item.qty}
+                    </TableCell>
+                    <TableCell className="text-center py-1.5 tabular-nums text-muted-foreground">
+                      {item.currentInventory}
                     </TableCell>
                     <TableCell className="text-center py-1.5 px-1.5">
                       <div className="h-8 w-8 mx-auto rounded-md overflow-hidden border bg-muted">
@@ -252,21 +253,6 @@ function DODetailSheet({
                     <TableCell className="text-center py-1.5 font-medium">
                       <p className="truncate">{item.productName}</p>
                       <p className="text-[10px] text-muted-foreground">{item.productCode}</p>
-                    </TableCell>
-                    <TableCell className="text-center py-1.5 font-semibold tabular-nums">
-                      {item.qty}
-                    </TableCell>
-                    <TableCell className="text-center py-1.5 tabular-nums text-muted-foreground">
-                      {item.stockIn}
-                    </TableCell>
-                    <TableCell className="text-center py-1.5 tabular-nums text-muted-foreground">
-                      {item.overflow}
-                    </TableCell>
-                    <TableCell className="text-center py-1.5 tabular-nums text-muted-foreground">
-                      {item.stockOut}
-                    </TableCell>
-                    <TableCell className="text-center py-1.5 tabular-nums text-muted-foreground">
-                      {item.currentInventory}
                     </TableCell>
                     <TableCell className="text-center py-1.5 tabular-nums text-muted-foreground">
                       {item.maxCapacity}
@@ -286,18 +272,6 @@ function DODetailSheet({
               <div>
                 <p className="text-[10px] font-semibold tracking-widest uppercase text-muted-foreground">Order Qty</p>
                 <p className="mt-1 font-bold tabular-nums">{totals.qty}</p>
-              </div>
-              <div>
-                <p className="text-[10px] font-semibold tracking-widest uppercase text-muted-foreground">Stock In</p>
-                <p className="mt-1 font-bold tabular-nums">{totals.stockIn}</p>
-              </div>
-              <div>
-                <p className="text-[10px] font-semibold tracking-widest uppercase text-muted-foreground">Overflow</p>
-                <p className="mt-1 font-bold tabular-nums">{totals.overflow}</p>
-              </div>
-              <div>
-                <p className="text-[10px] font-semibold tracking-widest uppercase text-muted-foreground">Stock Out</p>
-                <p className="mt-1 font-bold tabular-nums">{totals.stockOut}</p>
               </div>
               <div>
                 <p className="text-[10px] font-semibold tracking-widest uppercase text-muted-foreground">Inventory</p>
