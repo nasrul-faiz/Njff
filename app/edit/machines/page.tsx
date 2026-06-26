@@ -20,7 +20,7 @@ export default function EditMachinesPage() {
           }}
           isDirty={isDirty}
         />
-        <div className="flex-1 overflow-auto p-4">
+        <div className="flex-1 overflow-hidden p-4">
           <EditMachinesContent onSaveRef={saveRef} onDirtyChange={setIsDirty} />
         </div>
       </div>

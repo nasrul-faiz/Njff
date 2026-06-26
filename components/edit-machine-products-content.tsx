@@ -46,6 +46,12 @@ interface Placement {
 const inputCls =
   "w-full rounded-md border bg-background px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
 
+function compareSlots(a: string, b: string) {
+  const aTrim = a.trim().toUpperCase()
+  const bTrim = b.trim().toUpperCase()
+  return aTrim.localeCompare(bTrim, undefined, { numeric: true, sensitivity: "base" })
+}
+
 interface PlacementEditRowProps {
   draft: Placement
   products: Product[]
@@ -191,11 +197,11 @@ export function EditMachineProductsContent({ onSaveRef, onDirtyChange }: EditMac
 
   const visiblePlacements = placements
     .filter((p) => p.machineId === selectedMachine)
-    .sort((a, b) => a.slot.localeCompare(b.slot))
+    .sort((a, b) => compareSlots(a.slot, b.slot))
 
   const visiblePendingAdds = pendingAdds
     .filter((p) => p.machineId === selectedMachine)
-    .sort((a, b) => a.slot.localeCompare(b.slot))
+    .sort((a, b) => compareSlots(a.slot, b.slot))
 
   const handleSaveAll = React.useCallback(async () => {
     const itemsToSave: Array<RefillItem & { machine_id: string }> = []
@@ -445,7 +451,7 @@ export function EditMachineProductsContent({ onSaveRef, onDirtyChange }: EditMac
             </Button>
           </div>
 
-          <div className="overflow-x-auto">
+          <div className="max-h-[calc(100vh-240px)] overflow-auto">
             <Table className="text-xs min-w-[600px]">
               <TableHeader>
                 <TableRow className="hover:bg-transparent">

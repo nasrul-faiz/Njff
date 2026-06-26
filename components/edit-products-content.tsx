@@ -399,7 +399,8 @@ export function EditProductsContent({ onSaveRef, onDirtyChange }: EditProductsCo
         </div>
 
         <div className="rounded-xl border bg-card overflow-hidden text-xs">
-          <Table className="text-xs">
+          <div className="max-h-[calc(100vh-240px)] overflow-auto">
+            <Table className="text-xs min-w-[720px]">
             <TableHeader>
               <TableRow className="hover:bg-transparent">
                 {["Code", "Product Name / Image", "Type", "Max Qty", "Actions"].map((h) => (
@@ -540,7 +541,8 @@ export function EditProductsContent({ onSaveRef, onDirtyChange }: EditProductsCo
                 </TableRow>
               )}
             </TableBody>
-          </Table>
+            </Table>
+          </div>
         </div>
       </div>
     </>

@@ -289,7 +289,7 @@ export function EditMachinesContent({ onSaveRef, onDirtyChange }: EditMachinesCo
         </div>
 
         <div className="rounded-xl border bg-card overflow-hidden text-xs">
-          <div className="overflow-x-auto">
+          <div className="max-h-[calc(100vh-240px)] overflow-auto">
             <Table className="text-xs min-w-[600px]">
               <TableHeader>
                 <TableRow className="hover:bg-transparent">
