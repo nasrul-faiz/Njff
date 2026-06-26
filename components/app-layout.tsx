@@ -5,6 +5,7 @@ import {
   SettingsIcon,
   ChevronsUpDownIcon,
   CheckIcon,
+  HistoryIcon,
   RefreshCwIcon,
   ShoppingCartIcon,
   PencilIcon,
@@ -73,6 +74,7 @@ const workspaces = [
 
 const refillNavItems = [
   { title: "Refill Service", icon: HomeIcon, url: "/home" },
+  { title: "History", icon: HistoryIcon, url: "/history" },
   { title: "View DO", icon: SearchIcon, url: "/view-do" },
 ]
 

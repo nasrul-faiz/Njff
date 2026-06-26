@@ -46,13 +46,15 @@ export async function GET() {
       refill_items: string | null
       delivery_orders: string | null
       delivery_order_items: string | null
+      refill_history: string | null
     }>(`
       SELECT
         to_regclass('public.machines')::text AS machines,
         to_regclass('public.products')::text AS products,
         to_regclass('public.refill_items')::text AS refill_items,
         to_regclass('public.delivery_orders')::text AS delivery_orders,
-        to_regclass('public.delivery_order_items')::text AS delivery_order_items
+        to_regclass('public.delivery_order_items')::text AS delivery_order_items,
+        to_regclass('public.refill_history')::text AS refill_history
     `)
 
     const row = result.rows[0]
@@ -61,7 +63,8 @@ export async function GET() {
         row?.products &&
         row?.refill_items &&
         row?.delivery_orders &&
-        row?.delivery_order_items
+        row?.delivery_order_items &&
+        row?.refill_history
     )
 
     return NextResponse.json({

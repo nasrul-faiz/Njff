@@ -6,6 +6,7 @@ import { FieldSelect } from "@/components/field-select"
 import { RefillTable } from "@/components/refill-table"
 import { getDOByCode, markDOComplete, type DeliveryOrder } from "@/lib/do-store"
 import { getRefillData, REFILL_DATA_STORAGE_KEY, saveRefillData, type RefillDataMap } from "@/lib/refill-store"
+import { saveRefillHistory, type RefillHistoryItem } from "@/lib/refill-history-store"
 import { Button } from "@/components/ui/button"
 
 type RefillRowValues = {
@@ -126,9 +127,32 @@ export function HomeContent() {
   function handleCompleteRefill() {
     if (!selectedMachine || items.length === 0) return
 
+    let historyItems: RefillHistoryItem[] = []
+    const completionDate = new Date().toISOString()
+
     const updatedMap: RefillDataMap = Object.fromEntries(
       Object.entries(refillData).map(([machineId, machineItems]) => {
         if (machineId !== selectedMachine) return [machineId, machineItems]
+
+        historyItems = machineItems.map((item) => {
+          const row = tableValues[item.slot] ?? {
+            stockIn: item.stockIn,
+            overflow: item.overflow,
+            stockOut: item.stockOut,
+          }
+
+          return {
+            slot: item.slot,
+            productCode: item.productCode,
+            productName: item.productName,
+            image: item.image,
+            stockIn: row.stockIn,
+            overflow: row.overflow,
+            stockOut: row.stockOut,
+            currentInventory: item.currentInventory,
+            maxCapacity: item.maxCapacity,
+          }
+        })
 
         const updatedItems = machineItems.map((item) => {
           const row = tableValues[item.slot] ?? {
@@ -155,8 +179,17 @@ export function HomeContent() {
       })
     )
 
-    saveRefillData(updatedMap).then(() => {
+    saveRefillData(updatedMap).then(async () => {
       setRefillData(updatedMap)
+
+      await saveRefillHistory({
+        machineId: selectedMachine,
+        machineLabel: selectedMachine,
+        date: completionDate,
+        doCode: activeDO?.code ?? null,
+        items: historyItems,
+      })
+
       if (activeDO) markDOComplete(activeDO.code)
       setRefillComplete(true)
     })

@@ -45,12 +45,13 @@ interface RefillTableProps {
   prefilledStockIn?: Record<string, number>
   isEditable?: boolean
   onValuesChange?: (values: Record<string, RowValues>) => void
+  showDoButton?: boolean
 }
 
 const inputCls =
   "w-16 rounded-md border bg-background px-1.5 py-1 text-center text-xs tabular-nums focus:outline-none focus:ring-1 focus:ring-ring"
 
-export function RefillTable({ machineId, items, prefilledStockIn, isEditable = true, onValuesChange }: RefillTableProps) {
+export function RefillTable({ machineId, items, prefilledStockIn, isEditable = true, onValuesChange, showDoButton = true }: RefillTableProps) {
   const [allOrders, setAllOrders] = React.useState<DeliveryOrder[]>([])
   const [isViewDOpen, setIsViewDOOpen] = React.useState(false)
   const [copiedCode, setCopiedCode] = React.useState("")
@@ -221,17 +222,19 @@ export function RefillTable({ machineId, items, prefilledStockIn, isEditable = t
         </span>
         <div className="flex items-center gap-2">
           <span className="text-[11px] text-muted-foreground">{items.length} slots</span>
-          <Button
-            type="button"
-            size="sm"
-            onClick={() => setIsViewDOOpen(true)}
-            disabled={filteredOrders.length === 0}
-            className={`h-7 text-[11px] gap-1.5 px-2.5 ${filteredOrders.length > 0 ? "bg-emerald-600 hover:bg-emerald-700 text-white" : ""}`}
-            variant={filteredOrders.length > 0 ? "default" : "outline"}
-          >
-            <ClipboardListIcon className="size-3.5" />
-            View DO
-          </Button>
+          {showDoButton && (
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => setIsViewDOOpen(true)}
+              disabled={filteredOrders.length === 0}
+              className={`h-7 text-[11px] gap-1.5 px-2.5 ${filteredOrders.length > 0 ? "bg-emerald-600 hover:bg-emerald-700 text-white" : ""}`}
+              variant={filteredOrders.length > 0 ? "default" : "outline"}
+            >
+              <ClipboardListIcon className="size-3.5" />
+              View DO
+            </Button>
+          )}
         </div>
       </div>
 
@@ -346,7 +349,7 @@ export function RefillTable({ machineId, items, prefilledStockIn, isEditable = t
       </Table>
       </div>
 
-      <Dialog open={isViewDOpen} onOpenChange={setIsViewDOOpen}>
+      <Dialog open={showDoButton && isViewDOpen} onOpenChange={setIsViewDOOpen}>
         <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>View DO - {machineId}</DialogTitle>

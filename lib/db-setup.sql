@@ -59,9 +59,21 @@ CREATE TABLE IF NOT EXISTS delivery_order_items (
   FOREIGN KEY (delivery_order_id) REFERENCES delivery_orders(id) ON DELETE CASCADE
 );
 
+-- Refill history table
+CREATE TABLE IF NOT EXISTS refill_history (
+  id SERIAL PRIMARY KEY,
+  machine_id VARCHAR(50) NOT NULL,
+  machine_label VARCHAR(255) NOT NULL,
+  date VARCHAR(50) NOT NULL,
+  do_code VARCHAR(50),
+  items JSONB NOT NULL,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
 -- Create indexes for faster queries
 CREATE INDEX IF NOT EXISTS idx_products_product_code ON products(product_code);
 CREATE INDEX IF NOT EXISTS idx_refill_items_machine_id ON refill_items(machine_id);
 CREATE INDEX IF NOT EXISTS idx_delivery_orders_code ON delivery_orders(code);
 CREATE INDEX IF NOT EXISTS idx_delivery_orders_machine_id ON delivery_orders(machine_id);
 CREATE INDEX IF NOT EXISTS idx_delivery_order_items_delivery_order_id ON delivery_order_items(delivery_order_id);
+CREATE INDEX IF NOT EXISTS idx_refill_history_machine_date ON refill_history(machine_id, date DESC);
