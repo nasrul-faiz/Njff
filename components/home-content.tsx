@@ -24,6 +24,7 @@ export function HomeContent() {
   const [activeDO, setActiveDO] = React.useState<DeliveryOrder | null>(null)
   const [refillComplete, setRefillComplete] = React.useState(false)
   const [tableValues, setTableValues] = React.useState<Record<string, RefillRowValues>>({})
+  const [isCompleting, setIsCompleting] = React.useState(false)
 
   React.useEffect(() => {
     getRefillData().then(setRefillData)
@@ -72,6 +73,7 @@ export function HomeContent() {
     setDoError("")
     setActiveDO(null)
     setRefillComplete(false)
+    setIsCompleting(false)
     setTableValues({})
     resetMachineRefillInputs()
   }
@@ -82,6 +84,7 @@ export function HomeContent() {
     setDoError("")
     setActiveDO(null)
     setRefillComplete(false)
+    setIsCompleting(false)
     setTableValues({})
     resetMachineRefillInputs()
   }
@@ -124,8 +127,10 @@ export function HomeContent() {
     setDoError("")
   }
 
-  function handleCompleteRefill() {
-    if (!selectedMachine || items.length === 0) return
+  async function handleCompleteRefill() {
+    if (!selectedMachine || items.length === 0 || isCompleting) return
+
+    setIsCompleting(true)
 
     let historyItems: RefillHistoryItem[] = []
     const completionDate = new Date().toISOString()
@@ -179,7 +184,8 @@ export function HomeContent() {
       })
     )
 
-    saveRefillData(updatedMap).then(async () => {
+    try {
+      await saveRefillData(updatedMap)
       setRefillData(updatedMap)
 
       await saveRefillHistory({
@@ -192,7 +198,9 @@ export function HomeContent() {
 
       if (activeDO) markDOComplete(activeDO.code)
       setRefillComplete(true)
-    })
+    } finally {
+      setIsCompleting(false)
+    }
   }
 
   if (refillComplete) {
@@ -303,10 +311,11 @@ export function HomeContent() {
           <Button
             size="sm"
             className="gap-1.5 bg-emerald-600 hover:bg-emerald-700"
+            disabled={isCompleting}
             onClick={handleCompleteRefill}
           >
             <CheckCircleIcon className="size-3.5" />
-            Complete Refill
+            {isCompleting ? "Saving..." : "Complete Refill"}
           </Button>
         </div>
       )}

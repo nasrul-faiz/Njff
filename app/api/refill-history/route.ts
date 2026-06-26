@@ -30,6 +30,11 @@ async function ensureRefillHistorySchema() {
     CREATE INDEX IF NOT EXISTS idx_refill_history_machine_date
     ON refill_history(machine_id, date DESC)
   `)
+
+  await dbQuery(`
+    CREATE INDEX IF NOT EXISTS idx_refill_history_machine_do_created
+    ON refill_history(machine_id, do_code, created_at DESC)
+  `)
 }
 
 export async function GET(request: NextRequest) {
@@ -39,21 +44,35 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const machineId = searchParams.get("machine_id")
 
+    const fromDate = searchParams.get("from_date")
+    const toDate = searchParams.get("to_date")
+
+    const where: string[] = []
+    const params: string[] = []
+
     if (machineId) {
-      const result = await dbQuery<RefillHistoryRow>(
-        `SELECT id, machine_id, machine_label, date, do_code, items
-         FROM refill_history
-         WHERE machine_id = $1
-         ORDER BY date DESC, id DESC`,
-        [machineId]
-      )
-      return NextResponse.json(result.rows)
+      params.push(machineId)
+      where.push(`machine_id = $${params.length}`)
     }
+
+    if (fromDate) {
+      params.push(fromDate)
+      where.push(`LEFT(date, 10) >= $${params.length}`)
+    }
+
+    if (toDate) {
+      params.push(toDate)
+      where.push(`LEFT(date, 10) <= $${params.length}`)
+    }
+
+    const whereClause = where.length > 0 ? `WHERE ${where.join(" AND ")}` : ""
 
     const result = await dbQuery<RefillHistoryRow>(
       `SELECT id, machine_id, machine_label, date, do_code, items
        FROM refill_history
-       ORDER BY date DESC, id DESC`
+       ${whereClause}
+       ORDER BY date DESC, id DESC`,
+      params
     )
 
     return NextResponse.json(result.rows)
@@ -80,6 +99,22 @@ export async function POST(request: NextRequest) {
         { error: "machine_id, machine_label, date, and items array are required" },
         { status: 400 }
       )
+    }
+
+    const duplicateResult = await dbQuery<RefillHistoryRow>(
+      `SELECT id, machine_id, machine_label, date, do_code, items
+       FROM refill_history
+       WHERE machine_id = $1
+         AND COALESCE(do_code, '') = COALESCE($2, '')
+         AND items = $3::jsonb
+         AND created_at >= NOW() - INTERVAL '2 minutes'
+       ORDER BY created_at DESC, id DESC
+       LIMIT 1`,
+      [machineId, doCode, JSON.stringify(items)]
+    )
+
+    if (duplicateResult.rows.length > 0) {
+      return NextResponse.json(duplicateResult.rows[0])
     }
 
     const result = await dbQuery<RefillHistoryRow>(

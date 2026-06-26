@@ -1,6 +1,6 @@
 import type { RefillItem } from "@/components/refill-table"
 
-export interface RefillHistoryItem extends RefillItem {}
+export type RefillHistoryItem = RefillItem
 
 export interface RefillHistoryEntry {
   id: number
@@ -11,6 +11,15 @@ export interface RefillHistoryEntry {
   items: RefillHistoryItem[]
 }
 
+interface RefillHistoryApiEntry {
+  id: number
+  machine_id: string
+  machine_label: string
+  date: string
+  do_code: string | null
+  items?: RefillHistoryItem[]
+}
+
 interface SaveRefillHistoryPayload {
   machineId: string
   machineLabel: string
@@ -19,20 +28,40 @@ interface SaveRefillHistoryPayload {
   items: RefillHistoryItem[]
 }
 
-export async function getRefillHistory(machineId?: string): Promise<RefillHistoryEntry[]> {
-  try {
-    const query = machineId
-      ? `?machine_id=${encodeURIComponent(machineId)}`
-      : ""
+interface GetRefillHistoryOptions {
+  machineId?: string
+  fromDate?: string
+  toDate?: string
+}
 
-    const response = await fetch(`/api/refill-history${query}`, {
+export async function getRefillHistory(
+  options: GetRefillHistoryOptions = {}
+): Promise<RefillHistoryEntry[]> {
+  try {
+    const params = new URLSearchParams()
+
+    if (options.machineId) {
+      params.set("machine_id", options.machineId)
+    }
+
+    if (options.fromDate) {
+      params.set("from_date", options.fromDate)
+    }
+
+    if (options.toDate) {
+      params.set("to_date", options.toDate)
+    }
+
+    const query = params.toString()
+
+    const response = await fetch(`/api/refill-history${query ? `?${query}` : ""}`, {
       cache: "no-store",
     })
 
     if (!response.ok) throw new Error("Failed to fetch refill history")
 
-    const data = await response.json()
-    return data.map((entry: any) => ({
+    const data: RefillHistoryApiEntry[] = await response.json()
+    return data.map((entry) => ({
       id: entry.id,
       machineId: entry.machine_id,
       machineLabel: entry.machine_label,

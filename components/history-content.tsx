@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { ClipboardListIcon, HistoryIcon } from "lucide-react"
+import { CalendarSearchIcon, ClipboardListIcon, HistoryIcon } from "lucide-react"
 import { FieldSelect } from "@/components/field-select"
 import { RefillTable, type RefillItem } from "@/components/refill-table"
 import { Button } from "@/components/ui/button"
@@ -48,43 +48,42 @@ function sortSlots(items: RefillItem[]) {
 
 export function HistoryContent() {
   const [selectedMachine, setSelectedMachine] = React.useState("")
+  const [fromDate, setFromDate] = React.useState("")
+  const [toDate, setToDate] = React.useState("")
   const [historyEntries, setHistoryEntries] = React.useState<RefillHistoryEntry[]>([])
   const [selectedHistoryId, setSelectedHistoryId] = React.useState<number | null>(null)
-  const [loading, setLoading] = React.useState(true)
+  const [loading, setLoading] = React.useState(false)
   const [loadingDO, setLoadingDO] = React.useState(false)
   const [isDoDialogOpen, setIsDoDialogOpen] = React.useState(false)
   const [selectedDO, setSelectedDO] = React.useState<DeliveryOrder | null>(null)
 
   React.useEffect(() => {
-    getRefillHistory().then((entries) => {
-      setHistoryEntries(entries)
-      setLoading(false)
-    })
-  }, [])
-
-  const machineEntries = React.useMemo(
-    () =>
-      historyEntries.filter((entry) =>
-        selectedMachine ? entry.machineId === selectedMachine : false
-      ),
-    [historyEntries, selectedMachine]
-  )
-
-  React.useEffect(() => {
-    if (machineEntries.length === 0) {
-      setSelectedHistoryId(null)
+    if (!selectedMachine) {
       return
     }
 
+    setLoading(true)
+    getRefillHistory({
+      machineId: selectedMachine,
+      fromDate: fromDate || undefined,
+      toDate: toDate || undefined,
+    }).then((entries) => {
+      setHistoryEntries(entries)
+      setLoading(false)
+    })
+  }, [selectedMachine, fromDate, toDate])
+
+  const machineEntries = historyEntries
+
+  const effectiveSelectedHistoryId = React.useMemo(() => {
+    if (machineEntries.length === 0) return null
     const exists = machineEntries.some((entry) => entry.id === selectedHistoryId)
-    if (!exists) {
-      setSelectedHistoryId(machineEntries[0].id)
-    }
+    return exists ? selectedHistoryId : machineEntries[0].id
   }, [machineEntries, selectedHistoryId])
 
   const selectedHistory = React.useMemo(
-    () => machineEntries.find((entry) => entry.id === selectedHistoryId) ?? null,
-    [machineEntries, selectedHistoryId]
+    () => machineEntries.find((entry) => entry.id === effectiveSelectedHistoryId) ?? null,
+    [machineEntries, effectiveSelectedHistoryId]
   )
 
   const selectedItems = React.useMemo(
@@ -108,6 +107,40 @@ export function HistoryContent() {
         <div className="flex-1">
           <FieldSelect value={selectedMachine} onChange={setSelectedMachine} />
         </div>
+        <div className="flex items-end gap-2 rounded-lg border bg-muted/20 px-2.5 py-2">
+          <CalendarSearchIcon className="mb-2 size-4 text-muted-foreground" />
+          <div>
+            <p className="mb-1 text-[10px] font-semibold tracking-wide text-muted-foreground">From</p>
+            <input
+              type="date"
+              value={fromDate}
+              onChange={(event) => setFromDate(event.target.value)}
+              className="h-8 rounded-md border bg-background px-2 text-xs"
+            />
+          </div>
+          <div>
+            <p className="mb-1 text-[10px] font-semibold tracking-wide text-muted-foreground">To</p>
+            <input
+              type="date"
+              value={toDate}
+              onChange={(event) => setToDate(event.target.value)}
+              className="h-8 rounded-md border bg-background px-2 text-xs"
+            />
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="mb-0.5 h-8"
+            onClick={() => {
+              setFromDate("")
+              setToDate("")
+            }}
+            disabled={!fromDate && !toDate}
+          >
+            Clear
+          </Button>
+        </div>
         <Button
           type="button"
           size="sm"
@@ -127,7 +160,9 @@ export function HistoryContent() {
             History Records
           </span>
           <span className="text-[11px] text-muted-foreground">
-            {selectedMachine ? `${machineEntries.length} records` : "Choose machine"}
+            {selectedMachine
+              ? `${machineEntries.length} records`
+              : "Choose machine"}
           </span>
         </div>
 
@@ -146,7 +181,7 @@ export function HistoryContent() {
           <div className="p-3">
             <div className="flex flex-wrap gap-2">
               {machineEntries.map((entry) => {
-                const isActive = entry.id === selectedHistoryId
+                  const isActive = entry.id === effectiveSelectedHistoryId
                 return (
                   <button
                     key={entry.id}
