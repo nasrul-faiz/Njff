@@ -1,10 +1,13 @@
 "use client"
 
 import * as React from "react"
-import { CalendarSearchIcon, ClipboardListIcon, HistoryIcon } from "lucide-react"
+import { format } from "date-fns"
+import { CalendarIcon, ClipboardListIcon, HistoryIcon } from "lucide-react"
+import { type DateRange } from "react-day-picker"
 import { FieldSelect } from "@/components/field-select"
 import { RefillTable, type RefillItem } from "@/components/refill-table"
 import { Button } from "@/components/ui/button"
+import { Calendar } from "@/components/ui/calendar"
 import {
   Dialog,
   DialogContent,
@@ -12,6 +15,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover"
 import {
   Table,
   TableBody,
@@ -48,8 +56,7 @@ function sortSlots(items: RefillItem[]) {
 
 export function HistoryContent() {
   const [selectedMachine, setSelectedMachine] = React.useState("")
-  const [fromDate, setFromDate] = React.useState("")
-  const [toDate, setToDate] = React.useState("")
+  const [dateRange, setDateRange] = React.useState<DateRange | undefined>(undefined)
   const [historyEntries, setHistoryEntries] = React.useState<RefillHistoryEntry[]>([])
   const [selectedHistoryId, setSelectedHistoryId] = React.useState<number | null>(null)
   const [loading, setLoading] = React.useState(false)
@@ -65,13 +72,13 @@ export function HistoryContent() {
     setLoading(true)
     getRefillHistory({
       machineId: selectedMachine,
-      fromDate: fromDate || undefined,
-      toDate: toDate || undefined,
+      fromDate: dateRange?.from ? format(dateRange.from, "yyyy-MM-dd") : undefined,
+      toDate: dateRange?.to ? format(dateRange.to, "yyyy-MM-dd") : undefined,
     }).then((entries) => {
       setHistoryEntries(entries)
       setLoading(false)
     })
-  }, [selectedMachine, fromDate, toDate])
+  }, [selectedMachine, dateRange])
 
   const machineEntries = historyEntries
 
@@ -102,116 +109,133 @@ export function HistoryContent() {
   }
 
   return (
-    <div className="flex flex-col gap-6">
-      <div className="flex items-end gap-3">
-        <div className="flex-1">
-          <FieldSelect value={selectedMachine} onChange={setSelectedMachine} />
-        </div>
-        <div className="flex items-end gap-2 rounded-lg border bg-muted/20 px-2.5 py-2">
-          <CalendarSearchIcon className="mb-2 size-4 text-muted-foreground" />
-          <div>
-            <p className="mb-1 text-[10px] font-semibold tracking-wide text-muted-foreground">From</p>
-            <input
-              type="date"
-              value={fromDate}
-              onChange={(event) => setFromDate(event.target.value)}
-              className="h-8 rounded-md border bg-background px-2 text-xs"
-            />
-          </div>
-          <div>
-            <p className="mb-1 text-[10px] font-semibold tracking-wide text-muted-foreground">To</p>
-            <input
-              type="date"
-              value={toDate}
-              onChange={(event) => setToDate(event.target.value)}
-              className="h-8 rounded-md border bg-background px-2 text-xs"
-            />
-          </div>
+    <div className="flex flex-col gap-5">
+      {/* Controls */}
+      <div className="flex flex-col gap-3">
+        <FieldSelect value={selectedMachine} onChange={setSelectedMachine} />
+
+        <div className="flex items-center gap-2">
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button
+                variant="outline"
+                className="flex-1 justify-start gap-2 font-normal"
+              >
+                <CalendarIcon className="size-4 shrink-0 text-muted-foreground" />
+                {dateRange?.from ? (
+                  dateRange.to ? (
+                    <span>
+                      {format(dateRange.from, "dd MMM yyyy")} –{" "}
+                      {format(dateRange.to, "dd MMM yyyy")}
+                    </span>
+                  ) : (
+                    format(dateRange.from, "dd MMM yyyy")
+                  )
+                ) : (
+                  <span className="text-muted-foreground">Filter by date range</span>
+                )}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0" align="start">
+              <Calendar
+                mode="range"
+                defaultMonth={dateRange?.from}
+                selected={dateRange}
+                onSelect={setDateRange}
+                numberOfMonths={1}
+              />
+            </PopoverContent>
+          </Popover>
+
+          {dateRange && (
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              className="h-9 shrink-0 text-xs"
+              onClick={() => setDateRange(undefined)}
+            >
+              Clear
+            </Button>
+          )}
+
           <Button
             type="button"
             size="sm"
-            variant="outline"
-            className="mb-0.5 h-8"
-            onClick={() => {
-              setFromDate("")
-              setToDate("")
-            }}
-            disabled={!fromDate && !toDate}
+            className="h-9 shrink-0 gap-1.5"
+            variant={selectedHistory?.doCode ? "default" : "outline"}
+            disabled={!selectedHistory?.doCode || loadingDO}
+            onClick={handleViewDO}
           >
-            Clear
+            <ClipboardListIcon className="size-3.5" />
+            {loadingDO ? "Loading…" : "View DO"}
           </Button>
         </div>
-        <Button
-          type="button"
-          size="sm"
-          className="mb-0.5 gap-1.5"
-          variant={selectedHistory?.doCode ? "default" : "outline"}
-          disabled={!selectedHistory?.doCode || loadingDO}
-          onClick={handleViewDO}
-        >
-          <ClipboardListIcon className="size-3.5" />
-          {loadingDO ? "Loading DO..." : "DO"}
-        </Button>
       </div>
 
-      <div className="rounded-xl border bg-card overflow-hidden">
-        <div className="px-4 py-2 border-b flex items-center justify-between bg-muted/40">
-          <span className="text-[11px] font-semibold tracking-widest uppercase text-muted-foreground">
+      {/* History Records */}
+      <div className="flex flex-col gap-1.5">
+        <div className="flex items-center justify-between px-0.5">
+          <span className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
             History Records
           </span>
-          <span className="text-[11px] text-muted-foreground">
-            {selectedMachine
-              ? `${machineEntries.length} records`
-              : "Choose machine"}
-          </span>
+          {selectedMachine && !loading && (
+            <span className="text-[11px] text-muted-foreground">
+              {machineEntries.length} record{machineEntries.length !== 1 ? "s" : ""}
+            </span>
+          )}
         </div>
 
         {!selectedMachine ? (
-          <div className="py-10 text-center text-sm text-muted-foreground">
-            Choose machine to view history.
+          <div className="flex items-center gap-2 rounded-xl border bg-card px-4 py-3 text-sm text-muted-foreground">
+            <HistoryIcon className="size-4 opacity-40" />
+            Choose a machine to view history.
           </div>
         ) : loading ? (
-          <div className="py-10 text-center text-sm text-muted-foreground">Loading...</div>
+          <div className="rounded-xl border bg-card px-4 py-3 text-sm text-muted-foreground">
+            Loading…
+          </div>
         ) : machineEntries.length === 0 ? (
-          <div className="flex flex-col items-center gap-3 py-10 text-center text-muted-foreground">
-            <HistoryIcon className="size-8 opacity-40" />
-            <p className="text-sm">No history found for this machine.</p>
+          <div className="flex items-center gap-2 rounded-xl border bg-card px-4 py-3 text-sm text-muted-foreground">
+            <HistoryIcon className="size-4 opacity-40" />
+            No history found for this machine.
           </div>
         ) : (
-          <div className="p-3">
-            <div className="flex flex-wrap gap-2">
-              {machineEntries.map((entry) => {
-                  const isActive = entry.id === effectiveSelectedHistoryId
-                return (
-                  <button
-                    key={entry.id}
-                    type="button"
-                    onClick={() => setSelectedHistoryId(entry.id)}
-                    className={`rounded-md border px-3 py-1.5 text-left text-xs transition ${
-                      isActive
-                        ? "border-emerald-300 bg-emerald-50 dark:bg-emerald-950/30"
-                        : "bg-background hover:bg-muted"
-                    }`}
-                  >
-                    <p className="font-medium">{formatDateTime(entry.date)}</p>
-                    <p className="text-[10px] text-muted-foreground">
-                      {entry.doCode ? `DO ${entry.doCode}` : "Manual refill (No DO)"}
-                    </p>
-                  </button>
-                )
-              })}
-            </div>
-          </div>
+          <select
+            value={effectiveSelectedHistoryId ?? ""}
+            onChange={(e) => setSelectedHistoryId(Number(e.target.value))}
+            className="h-10 w-full rounded-xl border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+          >
+            {machineEntries.map((entry) => (
+              <option key={entry.id} value={entry.id}>
+                {formatDateTime(entry.date)}
+                {entry.doCode ? ` · DO ${entry.doCode}` : " · Manual refill"}
+              </option>
+            ))}
+          </select>
         )}
       </div>
 
+      {/* Selected refill detail */}
       {selectedMachine && selectedHistory && selectedItems.length > 0 && (
-        <RefillTable
-          machineId={selectedMachine}
-          items={selectedItems}
-          isEditable={false}
-          showDoButton={false}
-        />
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center justify-between px-1">
+            <p className="text-xs font-semibold text-muted-foreground">
+              Refill detail — {formatDateTime(selectedHistory.date)}
+            </p>
+            {selectedHistory.doCode && (
+              <span className="rounded-full border px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+                DO {selectedHistory.doCode}
+              </span>
+            )}
+          </div>
+          <RefillTable
+            machineId={selectedMachine}
+            items={selectedItems}
+            isEditable={false}
+            showDoButton={false}
+          />
+        </div>
       )}
 
       <Dialog open={isDoDialogOpen} onOpenChange={setIsDoDialogOpen}>
