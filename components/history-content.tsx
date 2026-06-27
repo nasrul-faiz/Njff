@@ -98,6 +98,21 @@ export function HistoryContent() {
     [selectedHistory]
   )
 
+  // Group entries by calendar day for the dropdown
+  const entriesByDay = React.useMemo(() => {
+    const groups: { day: string; entries: RefillHistoryEntry[] }[] = []
+    for (const entry of machineEntries) {
+      const day = format(new Date(entry.date), "dd MMM yyyy")
+      const existing = groups.find((g) => g.day === day)
+      if (existing) {
+        existing.entries.push(entry)
+      } else {
+        groups.push({ day, entries: [entry] })
+      }
+    }
+    return groups
+  }, [machineEntries])
+
   async function handleViewDO() {
     if (!selectedHistory?.doCode) return
 
@@ -162,7 +177,11 @@ export function HistoryContent() {
           <Button
             type="button"
             size="sm"
-            className="h-9 shrink-0 gap-1.5"
+            className={`h-9 shrink-0 gap-1.5 transition-all ${
+              selectedHistory?.doCode
+                ? "shadow-sm shadow-primary/30"
+                : ""
+            }`}
             variant={selectedHistory?.doCode ? "default" : "outline"}
             disabled={!selectedHistory?.doCode || loadingDO}
             onClick={handleViewDO}
@@ -206,11 +225,18 @@ export function HistoryContent() {
             onChange={(e) => setSelectedHistoryId(Number(e.target.value))}
             className="h-10 w-full rounded-xl border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
           >
-            {machineEntries.map((entry) => (
-              <option key={entry.id} value={entry.id}>
-                {formatDateTime(entry.date)}
-                {entry.doCode ? ` · DO ${entry.doCode}` : " · Manual refill"}
-              </option>
+            {entriesByDay.map(({ day, entries }) => (
+              <optgroup
+                key={day}
+                label={`${day}  ·  ${entries.length} refill${entries.length !== 1 ? "s" : ""}`}
+              >
+                {entries.map((entry) => (
+                  <option key={entry.id} value={entry.id}>
+                    {format(new Date(entry.date), "hh:mm a")}
+                    {entry.doCode ? `  ·  DO ${entry.doCode}` : "  ·  Manual refill"}
+                  </option>
+                ))}
+              </optgroup>
             ))}
           </select>
         )}
