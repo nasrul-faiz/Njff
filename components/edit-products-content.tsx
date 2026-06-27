@@ -117,7 +117,7 @@ function EditRow({ draft, onDraftChange, onConfirm, onCancel, confirmLoading }: 
       </TableCell>
       <TableCell className="py-1.5 text-center">
         <select
-          className={inputCls + " text-center"}
+          className={inputCls + " text-center text-[10px]"}
           value={draft.type ?? ""}
           onChange={(e) => onDraftChange({ ...draft, type: e.target.value as ProductType | "" })}
         >
@@ -444,7 +444,7 @@ export function EditProductsContent({ onSaveRef, onDirtyChange }: EditProductsCo
                       <span className="font-medium truncate max-w-[200px]">{pending.productName}</span>
                     </div>
                   </TableCell>
-                  <TableCell className="text-center py-1.5 text-muted-foreground">
+                  <TableCell className="text-center py-1.5 text-[10px] text-muted-foreground">
                     {pending.type || <span className="text-muted-foreground/40">—</span>}
                   </TableCell>
                   <TableCell className="text-center py-1.5 tabular-nums text-muted-foreground">
@@ -506,7 +506,7 @@ export function EditProductsContent({ onSaveRef, onDirtyChange }: EditProductsCo
                         <span className="font-medium truncate max-w-[200px]">{display.productName}</span>
                       </div>
                     </TableCell>
-                    <TableCell className="text-center py-1.5 text-muted-foreground">
+                    <TableCell className="text-center py-1.5 text-[10px] text-muted-foreground">
                       {display.type || <span className="text-muted-foreground/40">—</span>}
                     </TableCell>
                     <TableCell className="text-center py-1.5 tabular-nums text-muted-foreground">
