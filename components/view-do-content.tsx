@@ -318,15 +318,15 @@ export function ViewDOContent() {
   }, [allDOs, search])
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 lg:pl-2">
       {/* Search */}
-      <div className="rounded-xl border bg-card overflow-hidden">
-        <div className="px-4 py-3 border-b bg-muted/40">
+      <div className="overflow-hidden rounded-xl border bg-card">
+        <div className="border-b bg-muted/40 px-4 py-3 md:px-5">
           <p className="text-[11px] font-semibold tracking-widest uppercase text-muted-foreground">
             Search Delivery Orders
           </p>
         </div>
-        <div className="px-4 py-4">
+        <div className="px-4 py-4 md:px-5">
           <div className="relative">
             <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground pointer-events-none" />
             <input
@@ -379,7 +379,7 @@ export function ViewDOContent() {
           </p>
         </div>
       ) : (
-        <div className="rounded-xl border bg-card overflow-hidden">
+        <div className="overflow-hidden rounded-xl border bg-card">
           <Table className="text-xs">
             <TableHeader>
               <TableRow className="hover:bg-transparent">
@@ -414,7 +414,7 @@ export function ViewDOContent() {
               ))}
             </TableBody>
           </Table>
-          <div className="px-4 py-2 border-t bg-muted/20 text-xs text-muted-foreground">
+          <div className="border-t bg-muted/20 px-4 py-2 text-xs text-muted-foreground md:px-5">
             {filtered.length} order{filtered.length !== 1 && "s"} found
           </div>
         </div>
