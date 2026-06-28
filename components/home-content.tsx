@@ -8,6 +8,7 @@ import { getDOByCode, markDOComplete, type DeliveryOrder } from "@/lib/do-store"
 import { getRefillData, REFILL_DATA_STORAGE_KEY, saveRefillData, type RefillDataMap } from "@/lib/refill-store"
 import { saveRefillHistory, type RefillHistoryItem } from "@/lib/refill-history-store"
 import { Button } from "@/components/ui/button"
+import { getAutoStockOutQuantity, getTodayExpiredInfo, isRteProduct } from "@/lib/color-expired"
 
 type RefillRowValues = {
   stockIn: number
@@ -16,6 +17,7 @@ type RefillRowValues = {
 }
 
 export function HomeContent() {
+  const todayExpired = React.useMemo(() => getTodayExpiredInfo(), [])
   const [selectedMachine, setSelectedMachine] = React.useState("")
   const [refillData, setRefillData] = React.useState<RefillDataMap>({})
   const [refillStarted, setRefillStarted] = React.useState(false)
@@ -143,7 +145,9 @@ export function HomeContent() {
           const row = tableValues[item.slot] ?? {
             stockIn: item.stockIn,
             overflow: item.overflow,
-            stockOut: item.stockOut,
+            stockOut: isRteProduct(item.productType)
+              ? getAutoStockOutQuantity(item)
+              : item.stockOut,
           }
 
           return {
@@ -163,7 +167,9 @@ export function HomeContent() {
           const row = tableValues[item.slot] ?? {
             stockIn: item.stockIn,
             overflow: item.overflow,
-            stockOut: item.stockOut,
+            stockOut: isRteProduct(item.productType)
+              ? getAutoStockOutQuantity(item)
+              : item.stockOut,
           }
           const netIn = Math.max(0, row.stockIn - row.overflow)
           const nextInventory = Math.max(
@@ -290,6 +296,24 @@ export function HomeContent() {
               </Button>
             </form>
           )}
+        </div>
+      )}
+
+      {selectedMachine && (
+        <div className="flex items-center gap-3 rounded-xl border border-pink-200 bg-pink-50/70 px-4 py-3 text-sm dark:border-pink-900/50 dark:bg-pink-950/20">
+          <span
+            className="inline-flex h-4 w-4 shrink-0 rounded-full border border-black/10 dark:border-white/10"
+            style={{ backgroundColor: todayExpired.color }}
+            aria-hidden="true"
+          />
+          <div className="min-w-0">
+            <p className="font-medium text-pink-800 dark:text-pink-300">
+              Today Out Colour: {todayExpired.day} · {todayExpired.label}
+            </p>
+            <p className="text-xs text-pink-700/80 dark:text-pink-300/80">
+              RTE sahaja akan auto isi Stock Out ikut current inventory semasa.
+            </p>
+          </div>
         </div>
       )}
 

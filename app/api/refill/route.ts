@@ -11,6 +11,7 @@ interface RefillItem {
   productCode: string
   productName: string
   image: string
+  productType?: string
   stockIn: number
   overflow: number
   stockOut: number
@@ -23,7 +24,13 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const machineId = searchParams.get("machine_id")
 
-    let query = "SELECT * FROM refill_items"
+    let query = `
+      SELECT
+        refill_items.*,
+        COALESCE(products.type, '') AS product_type
+      FROM refill_items
+      LEFT JOIN products ON products.product_code = refill_items.product_code
+    `
     const params: (string | null)[] = []
 
     if (machineId) {
@@ -42,6 +49,7 @@ export async function GET(request: NextRequest) {
       productCode: row.product_code,
       productName: row.product_name,
       image: row.image,
+      productType: row.product_type,
       stockIn: row.stock_in,
       overflow: row.overflow,
       stockOut: row.stock_out,
