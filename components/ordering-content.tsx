@@ -77,17 +77,6 @@ export function OrderingContent() {
   const machineLabel =
     machines.find((m) => m.value === selectedMachine)?.label ?? selectedMachine
 
-  const orderLimitBySlot = React.useMemo(
-    () =>
-      Object.fromEntries(
-        sortedItems.map((item) => [
-          item.slot,
-          isRteProduct(item.productType) ? getAutoStockOutQuantity(item) : null,
-        ])
-      ),
-    [sortedItems]
-  )
-
   function handleMachineChange(value: string) {
     setSelectedMachine(value)
     setQuantities({})
@@ -96,9 +85,7 @@ export function OrderingContent() {
 
   function handleQtyChange(slot: string, raw: string) {
     const num = raw === "" ? 0 : Math.max(0, parseInt(raw) || 0)
-    const limit = orderLimitBySlot[slot]
-    const nextQty = typeof limit === "number" ? Math.min(num, limit) : num
-    setQuantities((prev) => ({ ...prev, [slot]: nextQty }))
+    setQuantities((prev) => ({ ...prev, [slot]: num }))
   }
 
   const orderedItems = sortedItems
@@ -161,7 +148,7 @@ export function OrderingContent() {
                 Today Out Colour: {todayExpired.day} · {todayExpired.label}
               </p>
               <p className="text-xs text-pink-700/80 dark:text-pink-300/80">
-                Untuk item RTE, order qty ikut jumlah yang akan stock out hari ini.
+                Untuk item RTE, nilai stock out hari ini dipaparkan sebagai rujukan sahaja.
               </p>
             </div>
           </div>
@@ -242,9 +229,8 @@ export function OrderingContent() {
                         <input
                           type="number"
                           min={0}
-                          max={typeof rteOrderLimit === "number" ? rteOrderLimit : undefined}
                           value={qty === 0 ? "" : qty}
-                          placeholder={typeof rteOrderLimit === "number" ? String(rteOrderLimit) : "0"}
+                          placeholder="0"
                           onChange={(e) =>
                             handleQtyChange(item.slot, e.target.value)
                           }
