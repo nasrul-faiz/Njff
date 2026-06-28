@@ -29,6 +29,7 @@ export interface RefillItem {
   productName: string
   image: string
   productType?: ProductType | ""
+  batchInventory?: Record<string, number>
   stockIn: number
   overflow: number
   stockOut: number
@@ -313,7 +314,7 @@ export function RefillTable({ machineId, items, prefilledStockIn, isEditable = t
                   <input
                     type="number"
                     min={0}
-                    disabled={!isEditable || isAutoStockOut}
+                    disabled={!isEditable}
                     value={row.stockOut === 0 ? "" : row.stockOut}
                     placeholder="0"
                     onChange={(e) => handleChange(item.slot, "stockOut", e.target.value)}

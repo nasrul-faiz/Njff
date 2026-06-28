@@ -8,12 +8,54 @@ import { getDOByCode, markDOComplete, type DeliveryOrder } from "@/lib/do-store"
 import { getRefillData, REFILL_DATA_STORAGE_KEY, saveRefillData, type RefillDataMap } from "@/lib/refill-store"
 import { saveRefillHistory, type RefillHistoryItem } from "@/lib/refill-history-store"
 import { Button } from "@/components/ui/button"
-import { getAutoStockOutQuantity, getTodayExpiredInfo, isRteProduct } from "@/lib/color-expired"
+import {
+  EXPIRED_COLORS,
+  getAutoStockOutQuantity,
+  getTodayExpiredColor,
+  getTodayExpiredInfo,
+  getTodayStockInColor,
+  isRteProduct,
+  normalizeBatchInventory,
+  type BatchInventory,
+} from "@/lib/color-expired"
 
 type RefillRowValues = {
   stockIn: number
   overflow: number
   stockOut: number
+}
+
+function applyStockOutToBatches(
+  batches: BatchInventory,
+  amount: number,
+  expiredColor: string
+): BatchInventory {
+  let remaining = Math.max(0, Math.floor(amount))
+  if (remaining === 0) return batches
+
+  const next: BatchInventory = { ...batches }
+  const removalOrder = [
+    expiredColor,
+    ...EXPIRED_COLORS.filter((color) => color !== expiredColor),
+  ]
+
+  for (const color of removalOrder) {
+    if (remaining <= 0) break
+    const available = next[color] ?? 0
+    if (available <= 0) continue
+
+    const deducted = Math.min(available, remaining)
+    const balance = available - deducted
+    if (balance > 0) {
+      next[color] = balance
+    } else {
+      delete next[color]
+    }
+
+    remaining -= deducted
+  }
+
+  return next
 }
 
 export function HomeContent() {
@@ -155,6 +197,7 @@ export function HomeContent() {
             productCode: item.productCode,
             productName: item.productName,
             image: item.image,
+            batchInventory: item.batchInventory ?? {},
             stockIn: row.stockIn,
             overflow: row.overflow,
             stockOut: row.stockOut,
@@ -172,9 +215,48 @@ export function HomeContent() {
               : item.stockOut,
           }
           const netIn = Math.max(0, row.stockIn - row.overflow)
+
+          if (!isRteProduct(item.productType)) {
+            const nextInventory = Math.max(
+              0,
+              Math.min(item.maxCapacity, item.currentInventory + netIn - row.stockOut)
+            )
+
+            return {
+              ...item,
+              stockIn: 0,
+              overflow: 0,
+              stockOut: 0,
+              currentInventory: nextInventory,
+            }
+          }
+
+          const stockInColor = getTodayStockInColor()
+          const expiredColor = getTodayExpiredColor()
+          const startingBatches = normalizeBatchInventory(item.batchInventory)
+          const batchAfterIn: BatchInventory = {
+            ...startingBatches,
+            [stockInColor]: (startingBatches[stockInColor] ?? 0) + netIn,
+          }
+          const totalAfterIn = Object.values(batchAfterIn).reduce(
+            (sum, qty) => sum + qty,
+            0
+          )
+          const appliedStockOut = Math.max(
+            0,
+            Math.min(totalAfterIn, Math.floor(row.stockOut))
+          )
+          const batchAfterOut = applyStockOutToBatches(
+            batchAfterIn,
+            appliedStockOut,
+            expiredColor
+          )
           const nextInventory = Math.max(
             0,
-            Math.min(item.maxCapacity, item.currentInventory + netIn - row.stockOut)
+            Math.min(
+              item.maxCapacity,
+              Object.values(batchAfterOut).reduce((sum, qty) => sum + qty, 0)
+            )
           )
 
           return {
@@ -183,6 +265,7 @@ export function HomeContent() {
             overflow: 0,
             stockOut: 0,
             currentInventory: nextInventory,
+            batchInventory: batchAfterOut,
           }
         })
 

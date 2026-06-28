@@ -24,6 +24,28 @@ export const COLOR_LABELS = [
   { color: "#EAB308", label: "Yellow" },
 ] as const
 
+export type BatchInventory = Record<string, number>
+
+function toSafeInteger(value: unknown) {
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed)) return 0
+  return Math.max(0, Math.floor(parsed))
+}
+
+export function normalizeBatchInventory(batchInventory?: Record<string, unknown> | null): BatchInventory {
+  if (!batchInventory || typeof batchInventory !== "object") return {}
+
+  const normalized: BatchInventory = {}
+  for (const [color, qty] of Object.entries(batchInventory)) {
+    const safeQty = toSafeInteger(qty)
+    if (safeQty > 0) {
+      normalized[color] = safeQty
+    }
+  }
+
+  return normalized
+}
+
 export function getTodayExpiredIndex(date = new Date()) {
   return (date.getDay() + 6) % 7
 }
@@ -41,6 +63,14 @@ export function getTodayExpiredInfo(date = new Date()) {
   }
 }
 
+export function getTodayStockInColor(date = new Date()) {
+  return STOCK_IN_COLORS[getTodayExpiredIndex(date)]
+}
+
+export function getTodayExpiredColor(date = new Date()) {
+  return EXPIRED_COLORS[getTodayExpiredIndex(date)]
+}
+
 export function isRteProduct(type?: ProductType | "") {
   return type === "RTE"
 }
@@ -48,6 +78,35 @@ export function isRteProduct(type?: ProductType | "") {
 export function getAutoStockOutQuantity(item: {
   currentInventory: number
   productType?: ProductType | ""
-}) {
-  return isRteProduct(item.productType) ? Math.max(0, item.currentInventory) : 0
+  batchInventory?: Record<string, unknown> | null
+}, date = new Date()) {
+  if (!isRteProduct(item.productType)) return 0
+
+  const batchInventory = normalizeBatchInventory(item.batchInventory)
+  if (Object.keys(batchInventory).length === 0) {
+    return Math.max(0, item.currentInventory)
+  }
+
+  return batchInventory[getTodayExpiredColor(date)] ?? 0
+}
+
+export function getSellableInventoryQuantity(item: {
+  currentInventory: number
+  productType?: ProductType | ""
+  batchInventory?: Record<string, unknown> | null
+}, date = new Date()) {
+  if (!isRteProduct(item.productType)) {
+    return Math.max(0, item.currentInventory)
+  }
+
+  const batchInventory = normalizeBatchInventory(item.batchInventory)
+  if (Object.keys(batchInventory).length === 0) {
+    return Math.max(0, item.currentInventory)
+  }
+
+  const expiredColor = getTodayExpiredColor(date)
+  const total = Object.values(batchInventory).reduce((sum, qty) => sum + qty, 0)
+  const expiredQty = batchInventory[expiredColor] ?? 0
+
+  return Math.max(0, total - expiredQty)
 }

@@ -4,6 +4,26 @@ import { dbQuery, getDbPool } from "@/lib/db"
 
 export const runtime = "nodejs"
 
+let refillSchemaPromise: Promise<void> | null = null
+
+async function ensureRefillItemsSchemaInternal() {
+  await dbQuery(`
+    ALTER TABLE refill_items
+    ADD COLUMN IF NOT EXISTS batch_inventory JSONB DEFAULT '{}'::jsonb
+  `)
+}
+
+async function ensureRefillItemsSchema() {
+  if (!refillSchemaPromise) {
+    refillSchemaPromise = ensureRefillItemsSchemaInternal().catch((error) => {
+      refillSchemaPromise = null
+      throw error
+    })
+  }
+
+  await refillSchemaPromise
+}
+
 interface RefillItem {
   id?: number
   machine_id: string
@@ -17,10 +37,13 @@ interface RefillItem {
   stockOut: number
   currentInventory: number
   maxCapacity: number
+  batchInventory?: Record<string, number>
 }
 
 export async function GET(request: NextRequest) {
   try {
+    await ensureRefillItemsSchema()
+
     const { searchParams } = new URL(request.url)
     const machineId = searchParams.get("machine_id")
 
@@ -55,6 +78,7 @@ export async function GET(request: NextRequest) {
       stockOut: row.stock_out,
       currentInventory: row.current_inventory,
       maxCapacity: row.max_capacity,
+      batchInventory: row.batch_inventory ?? {},
     }))
     
     return NextResponse.json(converted)
@@ -68,6 +92,8 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    await ensureRefillItemsSchema()
+
     const items: RefillItem[] = await request.json()
 
     if (!Array.isArray(items) || items.length === 0) {
@@ -82,8 +108,8 @@ export async function POST(request: NextRequest) {
     for (const item of items) {
       const result = await dbQuery<RefillItem>(
         `INSERT INTO refill_items 
-         (machine_id, slot, product_code, product_name, image, stock_in, overflow, stock_out, current_inventory, max_capacity)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+         (machine_id, slot, product_code, product_name, image, stock_in, overflow, stock_out, current_inventory, max_capacity, batch_inventory)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb)
          ON CONFLICT (machine_id, slot) DO UPDATE SET
          product_code = $3,
          product_name = $4,
@@ -93,6 +119,7 @@ export async function POST(request: NextRequest) {
          stock_out = $8,
          current_inventory = $9,
          max_capacity = $10,
+         batch_inventory = $11::jsonb,
          updated_at = NOW()
          RETURNING *`,
         [
@@ -106,6 +133,7 @@ export async function POST(request: NextRequest) {
           item.stockOut,
           item.currentInventory,
           item.maxCapacity,
+          JSON.stringify(item.batchInventory ?? {}),
         ]
       )
       createdItems.push(result.rows[0])
@@ -121,6 +149,8 @@ export async function POST(request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   try {
+    await ensureRefillItemsSchema()
+
     const payload: RefillItem | RefillItem[] = await request.json()
 
     if (Array.isArray(payload)) {
@@ -134,8 +164,8 @@ export async function PUT(request: NextRequest) {
         for (const item of payload) {
           await client.query(
             `INSERT INTO refill_items
-             (machine_id, slot, product_code, product_name, image, stock_in, overflow, stock_out, current_inventory, max_capacity)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+             (machine_id, slot, product_code, product_name, image, stock_in, overflow, stock_out, current_inventory, max_capacity, batch_inventory)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb)`,
             [
               item.machine_id,
               item.slot,
@@ -147,6 +177,7 @@ export async function PUT(request: NextRequest) {
               item.stockOut,
               item.currentInventory,
               item.maxCapacity,
+              JSON.stringify(item.batchInventory ?? {}),
             ]
           )
         }
@@ -181,8 +212,9 @@ export async function PUT(request: NextRequest) {
        stock_out = $6,
        current_inventory = $7,
        max_capacity = $8,
+      batch_inventory = $9::jsonb,
        updated_at = NOW()
-       WHERE machine_id = $9 AND slot = $10
+      WHERE machine_id = $10 AND slot = $11
        RETURNING *`,
       [
         item.productCode,
@@ -193,6 +225,7 @@ export async function PUT(request: NextRequest) {
         item.stockOut,
         item.currentInventory,
         item.maxCapacity,
+        JSON.stringify(item.batchInventory ?? {}),
         item.machine_id,
         item.slot,
       ]

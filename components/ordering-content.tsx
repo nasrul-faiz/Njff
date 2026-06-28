@@ -12,7 +12,12 @@ import {
 import { FieldSelect } from "@/components/field-select"
 import { getMachines } from "@/lib/machine-store"
 import { getRefillData, REFILL_DATA_STORAGE_KEY, type RefillDataMap } from "@/lib/refill-store"
-import { getAutoStockOutQuantity, getTodayExpiredInfo, isRteProduct } from "@/lib/color-expired"
+import {
+  getAutoStockOutQuantity,
+  getSellableInventoryQuantity,
+  getTodayExpiredInfo,
+  isRteProduct,
+} from "@/lib/color-expired"
 import {
   Table,
   TableBody,
@@ -189,7 +194,8 @@ export function OrderingContent() {
               <TableBody>
                 {sortedItems.map((item) => {
                   const qty = quantities[item.slot] ?? 0
-                  const isLow = item.currentInventory < item.maxCapacity * 0.3
+                  const currentForOrder = getSellableInventoryQuantity(item)
+                  const isLow = currentForOrder < item.maxCapacity * 0.3
                   const rteOrderLimit = isRteProduct(item.productType)
                     ? getAutoStockOutQuantity(item)
                     : null
@@ -226,7 +232,7 @@ export function OrderingContent() {
                         <span
                           className={`font-semibold tabular-nums ${isLow ? "text-red-500" : ""}`}
                         >
-                          {item.currentInventory}
+                          {currentForOrder}
                         </span>
                       </TableCell>
                       <TableCell className="text-center py-1.5 text-muted-foreground tabular-nums">

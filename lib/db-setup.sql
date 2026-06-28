@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS refill_items (
   stock_out INTEGER DEFAULT 0,
   current_inventory INTEGER DEFAULT 0,
   max_capacity INTEGER DEFAULT 0,
+  batch_inventory JSONB DEFAULT '{}'::jsonb,
   created_at TIMESTAMP DEFAULT NOW(),
   updated_at TIMESTAMP DEFAULT NOW(),
   UNIQUE(machine_id, slot)
